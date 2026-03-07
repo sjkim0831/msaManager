@@ -209,8 +209,17 @@
                                 class="material-symbols-outlined text-[var(--kr-gov-blue)]">settings_input_component</span>
                             모듈 인스턴스 현황
                         </h2>
-                        <span class="text-xs text-gray-400">포트: msa-ports.yml 참조</span>
+                        <div class="flex items-center gap-2">
+                            <select id="moduleProjectSelect" onchange="onModuleProjectChanged()"
+                                class="px-2 py-1 rounded border border-gray-200 text-xs bg-white">
+                                <option value="">현재 서버(로컬)</option>
+                            </select>
+                            <button onclick="refreshModules()"
+                                class="px-2 py-1 rounded text-[11px] font-bold border border-gray-300 text-gray-700 hover:bg-gray-100">조회</button>
+                            <span class="text-xs text-gray-400">포트: msa-ports.yml 참조</span>
+                        </div>
                     </div>
+                    <div id="moduleProjectInfo" class="px-6 pb-3 text-[11px] text-gray-500 mono">target: local</div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left">
                             <thead class="bg-gray-50 border-y border-gray-200">
@@ -1234,10 +1243,36 @@
 
         /* ── Modules ── */
         /* ── Modules ── */
+        function syncModuleProjectInfo(extra) {
+            const info = document.getElementById('moduleProjectInfo');
+            if (!info) return;
+            const p = projectRegistry.find(x => x.id === selectedProjectId);
+            if (!p) {
+                info.textContent = extra ? `target: local | ${extra}` : 'target: local';
+                return;
+            }
+            const base = `target: ${p.name || p.id} (${p.id}) ${p.user || '-'}@${p.host || '-'}:${p.port || '22'}`;
+            info.textContent = extra ? `${base} | ${extra}` : base;
+        }
+
         async function refreshModules() {
             try {
-                const res = await fetch('/admin/msa/api/modules');
-                modules = await res.json();
+                if (selectedProjectId) {
+                    const r = await fetch(`/admin/msa/api/projects/${encodeURIComponent(selectedProjectId)}/manager/modules`, {
+                        headers: { ...sshHeaders() }
+                    });
+                    const text = await r.text();
+                    let data;
+                    try { data = JSON.parse(text); } catch (e) { throw new Error(text || 'invalid json'); }
+                    if (!Array.isArray(data)) {
+                        if (data && data.status === 'error') throw new Error(data.message || 'fetch failed');
+                        throw new Error('모듈 목록 응답 형식 오류');
+                    }
+                    modules = data;
+                } else {
+                    const res = await fetch('/admin/msa/api/modules');
+                    modules = await res.json();
+                }
 
                 // If mappings are already loaded, we can group modules by their primary path segment
                 if (allMappings.length === 0) {
@@ -1245,8 +1280,12 @@
                     allMappings = await mRes.json();
                 }
 
+                syncModuleProjectInfo(`modules=${(modules || []).length}`);
                 renderModuleTable();
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+                syncModuleProjectInfo('error');
+            }
         }
 
         function renderModuleTable() {
@@ -1526,36 +1565,67 @@
         }
 
         /* ── Module controls ── */
+        function buildModuleActionRequest(id, action) {
+            if (selectedProjectId) {
+                return {
+                    url: `/admin/msa/api/projects/${encodeURIComponent(selectedProjectId)}/manager/modules/${encodeURIComponent(id)}/${encodeURIComponent(action)}`,
+                    init: { method: 'POST', headers: { ...sshHeaders() } }
+                };
+            }
+            return {
+                url: `/admin/msa/api/modules/${encodeURIComponent(id)}/${encodeURIComponent(action)}`,
+                init: { method: 'POST' }
+            };
+        }
+
+        async function callModuleAction(id, action, failMsg) {
+            const req = buildModuleActionRequest(id, action);
+            const r = await fetch(req.url, req.init);
+            const text = await r.text();
+            let body;
+            try { body = JSON.parse(text); } catch (e) { body = { status: r.ok ? 'ok' : 'error', message: text || 'invalid response' }; }
+            if (!r.ok || body.status !== 'ok') {
+                throw new Error(body.message || failMsg);
+            }
+            return body;
+        }
+
         async function startMod(id) {
-            const r = await fetch('/admin/msa/api/modules/' + id + '/start', { method: 'POST' });
-            const body = await r.json();
-            if (body.status !== 'ok') alert(body.message || '시작 실패');
+            try {
+                await callModuleAction(id, 'start', '시작 실패');
+            } catch (e) {
+                alert(e.message || '시작 실패');
+            }
             refreshModules();
         }
 
         async function stopMod(id) {
             if (confirm('모듈을 중지하시겠습니까?')) {
-                const r = await fetch('/admin/msa/api/modules/' + id + '/stop', { method: 'POST' });
-                const body = await r.json();
-                if (body.status !== 'ok') alert(body.message || '중지 실패');
+                try {
+                    await callModuleAction(id, 'stop', '중지 실패');
+                } catch (e) {
+                    alert(e.message || '중지 실패');
+                }
                 refreshModules();
             }
         }
 
         async function restartMod(id) {
             if (!confirm('모듈을 재시작하시겠습니까?')) return;
-            const r = await fetch('/admin/msa/api/modules/' + id + '/restart', { method: 'POST' });
-            const body = await r.json();
-            if (body.status !== 'ok') alert(body.message || '재시작 실패');
+            try {
+                await callModuleAction(id, 'restart', '재시작 실패');
+            } catch (e) {
+                alert(e.message || '재시작 실패');
+            }
             setTimeout(() => refreshModules(), 1200);
         }
 
         async function deployRestartMod(id) {
             if (!confirm('현재 target JAR를 /app에 배포 후 재시작할까요?')) return;
-            const r = await fetch('/admin/msa/api/modules/' + id + '/deploy-restart', { method: 'POST' });
-            const body = await r.json();
-            if (body.status !== 'ok') {
-                alert(body.message || '배포+재시작 실패');
+            try {
+                await callModuleAction(id, 'deploy-restart', '배포+재시작 실패');
+            } catch (e) {
+                alert(e.message || '배포+재시작 실패');
             }
             setTimeout(() => refreshModules(), 1600);
         }
@@ -1566,22 +1636,21 @@
                 return;
             }
             if (!confirm('모듈 폴더에서 Maven 빌드 후 /app 배포 + 재시작할까요?')) return;
-            const r = await fetch('/admin/msa/api/modules/' + id + '/build-deploy-restart', { method: 'POST' });
-            const body = await r.json();
-            if (body.status !== 'ok') {
-                alert(body.message || '빌드+배포+재시작 실패');
+            try {
+                await callModuleAction(id, 'build-deploy-restart', '빌드+배포+재시작 실패');
+            } catch (e) {
+                alert(e.message || '빌드+배포+재시작 실패');
             }
             setTimeout(() => refreshModules(), 2200);
         }
 
         async function deployZeroDowntimeMod(id) {
             if (!confirm('현재 target JAR로 빌드 없이 무중단 배포를 실행할까요?\n임시포트 기동→헬스체크→기존 포트 전환→임시포트 종료 순서로 동작합니다.')) return;
-            const r = await fetch('/admin/msa/api/modules/' + id + '/deploy-zerodowntime', { method: 'POST' });
-            const body = await r.json();
-            if (body.status !== 'ok') {
-                alert(body.message || '배포+무중단 실패');
-            } else {
+            try {
+                await callModuleAction(id, 'deploy-zerodowntime', '배포+무중단 실패');
                 showToast('success', '배포+무중단 완료');
+            } catch (e) {
+                alert(e.message || '배포+무중단 실패');
             }
             setTimeout(() => refreshModules(), 2600);
         }
@@ -1592,12 +1661,11 @@
                 return;
             }
             if (!confirm('Maven 빌드 후 무중단 배포를 실행할까요?\n임시포트 기동→헬스체크→기존 포트 전환→임시포트 종료 순서로 동작합니다.')) return;
-            const r = await fetch('/admin/msa/api/modules/' + id + '/build-deploy-zerodowntime', { method: 'POST' });
-            const body = await r.json();
-            if (body.status !== 'ok') {
-                alert(body.message || '빌드+무중단 실패');
-            } else {
+            try {
+                await callModuleAction(id, 'build-deploy-zerodowntime', '빌드+무중단 실패');
                 showToast('success', '빌드+무중단 완료');
+            } catch (e) {
+                alert(e.message || '빌드+무중단 실패');
             }
             setTimeout(() => refreshModules(), 2600);
         }
@@ -1952,35 +2020,40 @@
                 const r = await fetch('/admin/msa/api/projects');
                 const data = await r.json();
                 projectRegistry = data.projects || [];
-                const sel = document.getElementById('projectSelect');
-                if (sel) {
-                    const current = selectedProjectId || sel.value;
-                    sel.innerHTML = `<option value="">(프로젝트 선택)</option>` + projectRegistry.map(p => {
-                        const id = escHtml(p.id || '');
-                        const name = escHtml(p.name || p.id || '');
-                        return `<option value="${id}">${name} (${id})</option>`;
-                    }).join('');
-                    if (current && projectRegistry.some(p => p.id === current)) {
-                        sel.value = current;
-                        selectedProjectId = current;
-                    } else {
-                        selectedProjectId = '';
-                    }
-                }
+                const current = selectedProjectId
+                    || (document.getElementById('projectSelect')?.value || '')
+                    || (document.getElementById('moduleProjectSelect')?.value || '');
+                const valid = current && projectRegistry.some(p => p.id === current);
+                selectedProjectId = valid ? current : '';
+                renderProjectSelectors();
                 syncProjectInfoLine();
             } catch (e) {
                 console.error(e);
             }
         }
 
-        function onProjectSelectChanged() {
+        function renderProjectSelectors() {
             const sel = document.getElementById('projectSelect');
-            selectedProjectId = sel?.value || '';
-            const p = projectRegistry.find(x => x.id === selectedProjectId);
-            if (!p) {
-                syncProjectInfoLine();
-                return;
+            const moduleSel = document.getElementById('moduleProjectSelect');
+            const options = projectRegistry.map(p => {
+                const id = escHtml(p.id || '');
+                const name = escHtml(p.name || p.id || '');
+                return `<option value="${id}">${name} (${id})</option>`;
+            }).join('');
+            if (sel) {
+                sel.innerHTML = `<option value="">(프로젝트 선택)</option>${options}`;
+                sel.value = selectedProjectId || '';
             }
+            if (moduleSel) {
+                moduleSel.innerHTML = `<option value="">현재 서버(로컬)</option>${options}`;
+                moduleSel.value = selectedProjectId || '';
+            }
+            syncModuleProjectInfo();
+        }
+
+        function applySelectedProjectFormData() {
+            const p = projectRegistry.find(x => x.id === selectedProjectId);
+            if (!p) return;
             const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
             setVal('projectIdInput', p.id);
             setVal('projectNameInput', p.name || p.id);
@@ -1991,7 +2064,34 @@
             setVal('remoteDir', p.rootDir || appRoot);
             setVal('remoteContainerName', p.containerName || 'carbosys-app');
             setVal('remoteManagerUrl', p.managerUrl || 'http://localhost:18030');
+        }
+
+        function onProjectSelectChanged() {
+            const sel = document.getElementById('projectSelect');
+            selectedProjectId = sel?.value || '';
+            const moduleSel = document.getElementById('moduleProjectSelect');
+            if (moduleSel) moduleSel.value = selectedProjectId;
+            if (!selectedProjectId) {
+                syncProjectInfoLine();
+                syncModuleProjectInfo();
+                refreshModules();
+                return;
+            }
+            applySelectedProjectFormData();
             syncProjectInfoLine();
+            syncModuleProjectInfo();
+            refreshModules();
+        }
+
+        function onModuleProjectChanged() {
+            const sel = document.getElementById('moduleProjectSelect');
+            selectedProjectId = sel?.value || '';
+            const projectSel = document.getElementById('projectSelect');
+            if (projectSel) projectSel.value = selectedProjectId;
+            if (selectedProjectId) applySelectedProjectFormData();
+            syncProjectInfoLine();
+            syncModuleProjectInfo();
+            refreshModules();
         }
 
         function syncProjectInfoLine(extra) {
