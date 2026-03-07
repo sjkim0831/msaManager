@@ -1,0 +1,3073 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>MSA 통합 관리 - CCUS 통합관리 시스템</title>
+    <!-- auto-deploy-retest-after-jdk -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <style>
+        :root {
+            --kr-gov-blue: #00378b;
+            --kr-gov-green: #006b5d;
+            --kr-gov-text-primary: #1a1a1a;
+            --kr-gov-text-secondary: #4d4d4d;
+            --kr-gov-border-light: #d9d9d9;
+            --kr-gov-radius: 5px;
+        }
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'wght' 400, 'opsz' 24;
+            font-size: 22px;
+            line-height: 1;
+            vertical-align: middle;
+        }
+
+        code,
+        .mono {
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+        }
+
+        .nav-tab {
+            padding: 0.75rem 1.5rem;
+            font-weight: 700;
+            font-size: 0.875rem;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            color: #6b7280;
+        }
+
+        .nav-tab.active {
+            border-color: var(--kr-gov-blue);
+            color: var(--kr-gov-blue);
+        }
+
+        .gov-card {
+            background: white;
+            border: 1px solid var(--kr-gov-border-light);
+            border-radius: var(--kr-gov-radius);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        .log-box {
+            background: #1a1d27;
+            color: #e2e8f0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            height: 400px;
+            overflow-y: auto;
+            border-radius: 8px;
+            padding: 1rem;
+            line-height: 1.6;
+        }
+
+        .status-badge {
+            padding: 2px 10px;
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 9999px;
+        }
+
+        /* Accordion */
+        .accordion-body {
+            display: none;
+        }
+
+        .accordion-body.open {
+            display: block;
+        }
+
+        .accordion-toggle .chevron {
+            transition: transform 0.2s ease;
+        }
+
+        .accordion-toggle.open .chevron {
+            transform: rotate(180deg);
+        }
+
+        /* Method badges */
+        .badge-GET {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+
+        .badge-POST {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .badge-PUT {
+            background: #fef9c3;
+            color: #a16207;
+        }
+
+        .badge-DELETE {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        .badge-GETPOST {
+            background: #f3e8ff;
+            color: #7e22ce;
+        }
+
+        /* Param table */
+        .param-table th {
+            background: #f8fafc;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            color: #6b7280;
+            padding: 6px 12px;
+        }
+
+        .param-table td {
+            font-size: 12px;
+            padding: 7px 12px;
+            border-top: 1px solid #f1f5f9;
+        }
+
+        .required-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            background: #ef4444;
+            border-radius: 50%;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+
+<body class="bg-[#f8f9fa] text-[var(--kr-gov-text-primary)]">
+    <header class="bg-white border-b border-[var(--kr-gov-border-light)] sticky top-0 z-40 shadow-sm">
+        <div class="max-w-full mx-auto px-6 h-16 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-[28px] text-[var(--kr-gov-blue)]">hub</span>
+                <h1 class="text-lg font-bold">MSA 통합 관리 시스템</h1>
+                <span id="serverModeBadge" class="px-2 py-1 rounded text-[11px] font-black bg-gray-100 text-gray-700">개발</span>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="refreshData()"
+                    class="flex items-center gap-1 text-sm font-bold text-gray-600 hover:text-blue-600 transition-colors px-3 py-2 rounded hover:bg-gray-100">
+                    <span class="material-symbols-outlined text-[20px]">sync</span> 전체 동기화
+                </button>
+                <button onclick="killAllJava()" id="killAllBtn"
+                    class="flex items-center gap-1.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 active:bg-red-800 transition-colors px-4 py-2 rounded-lg shadow-sm">
+                    <span class="material-symbols-outlined text-[18px]">power_off</span>
+                    전체 종료
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Toast -->
+    <div id="toast" class="fixed top-5 right-5 z-50 hidden transition-all duration-300 opacity-0">
+        <div id="toastInner"
+            class="flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl text-sm font-bold text-white min-w-[280px]">
+            <span id="toastIcon" class="material-symbols-outlined text-[20px]"></span>
+            <span id="toastMsg"></span>
+        </div>
+    </div>
+
+    <main class="p-8">
+        <div class="max-w-7xl mx-auto">
+            <!-- Tabs -->
+            <div class="flex border-b border-gray-200 mb-6 bg-white rounded-t-lg px-4">
+                <button onclick="showTab('modules')" id="tab-modules" class="nav-tab active">모듈 상태 관리</button>
+                <button onclick="showTab('mappings')" id="tab-mappings" class="nav-tab">컨트롤러/경로 &amp; API 스펙</button>
+                <button onclick="showTab('changes')" id="tab-changes" class="nav-tab">변경 감지/자동 배포</button>
+                <button onclick="showTab('ops-deploy')" id="tab-ops-deploy" class="nav-tab">운영 배포</button>
+                <button onclick="showTab('logs')" id="tab-logs" class="nav-tab">로그 모니터링</button>
+                <button onclick="showTab('log-history')" id="tab-log-history" class="nav-tab">과거 로그 분석</button>
+                <button onclick="showTab('analytics')" id="tab-analytics" class="nav-tab">사용량/에러 분석</button>
+                <button onclick="showTab('security')" id="tab-security" class="nav-tab">보안 감지</button>
+                <button onclick="showTab('security-explorer')" id="tab-security-explorer" class="nav-tab">보안 탐색 제어</button>
+                <button onclick="showTab('traffic')" id="tab-traffic" class="nav-tab">트래픽 부하 감지</button>
+                <button onclick="showTab('accessibility')" id="tab-accessibility" class="nav-tab">웹 접근성 감지</button>
+            </div>
+
+            <!-- ============ Modules Tab ============ -->
+            <div id="content-modules" class="tab-content">
+                <div class="gov-card mb-8">
+                    <div class="flex justify-between items-center mb-6 px-6 pt-6">
+                        <h2 class="text-xl font-bold flex items-center gap-2">
+                            <span
+                                class="material-symbols-outlined text-[var(--kr-gov-blue)]">settings_input_component</span>
+                            모듈 인스턴스 현황
+                        </h2>
+                        <span class="text-xs text-gray-400">포트: msa-ports.yml 참조</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-50 border-y border-gray-200">
+                                <tr>
+                                    <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">모듈 ID</th>
+                                    <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">애플리케이션명</th>
+                                    <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-center">포트</th>
+                                    <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-center">상태</th>
+                                    <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-center">PID</th>
+                                    <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-right">제어</th>
+                                </tr>
+                            </thead>
+                            <tbody id="moduleTable" class="divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ Mappings + API Spec Tab ============ -->
+            <div id="content-mappings" class="tab-content hidden">
+                <!-- Search bar -->
+                <div class="gov-card mb-4 px-4 py-3 flex items-center gap-3">
+                    <span class="material-symbols-outlined text-gray-400 text-[20px]">search</span>
+                    <input id="searchInput" oninput="filterMappings()" type="text" placeholder="경로·모듈·설명 검색..."
+                        class="flex-1 text-sm outline-none bg-transparent placeholder-gray-400" />
+                    <span id="mappingCount" class="text-xs text-gray-400 font-mono"></span>
+                </div>
+
+                <div class="gov-card overflow-hidden">
+                    <div class="flex justify-between items-center px-6 py-4 border-b border-gray-100">
+                        <h2 class="text-base font-bold flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[var(--kr-gov-blue)]">route</span>
+                            중앙 컨트롤러 매핑 &amp; API 스펙
+                        </h2>
+                        <span class="text-xs text-gray-400">설정: msa-mappings.yml</span>
+                    </div>
+                    <div id="mappingAccordion" class="divide-y divide-gray-100"></div>
+                </div>
+            </div>
+
+            <!-- ============ Changes Tab ============ -->
+            <div id="content-changes" class="tab-content hidden">
+                <div class="gov-card mb-6 px-6 py-5">
+                    <div class="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                            <h2 class="text-lg font-bold flex items-center gap-2">
+                                <span class="material-symbols-outlined text-[var(--kr-gov-blue)]">history</span>
+                                변경 감지 및 자동 무중단 배포
+                            </h2>
+                            <p class="text-xs text-gray-500 mt-1">기본값 OFF, 서버 메모리/런타임 상태 유지(컨테이너 재생성 전까지 유지)</p>
+                            <p id="changeRangeLabel" class="text-xs text-gray-500 mt-1">기간: 전체</p>
+                            <p class="text-xs text-gray-400 mt-1 mono" th:text="'로그 파일: ' + ${appRoot} + '/logs/change-history.jsonl'">로그 파일: /opt/carbosys/logs/change-history.jsonl</p>
+                        </div>
+                        <label class="inline-flex items-center gap-2 text-sm font-bold">
+                            <input id="autoDeployToggle" type="checkbox" class="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500" onchange="toggleAutoDeploy(this.checked)" />
+                            자동 무중단 배포
+                            <span id="autoDeployStateText" class="px-2 py-0.5 rounded text-[11px] bg-gray-100 text-gray-600">OFF</span>
+                        </label>
+                        <label class="inline-flex items-center gap-2 text-sm font-bold">
+                            <input id="managerAutoDeployToggle" type="checkbox" class="rounded border-gray-300 text-amber-600 focus:ring-amber-500" onchange="toggleManagerAutoDeploy(this.checked)" />
+                            MsaManager 포함
+                            <span id="managerAutoDeployStateText" class="px-2 py-0.5 rounded text-[11px] bg-gray-100 text-gray-600">OFF</span>
+                        </label>
+                    </div>
+                    <div class="mt-4 grid grid-cols-1 lg:grid-cols-12 gap-2 items-end">
+                        <label class="lg:col-span-2 text-xs text-gray-600 font-bold">
+                            서버 모드
+                            <select id="runtimeServerMode" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs">
+                                <option value="development">개발</option>
+                                <option value="production">운영</option>
+                            </select>
+                        </label>
+                        <button onclick="saveRuntimeConfig()" class="lg:col-span-1 px-3 py-2 rounded text-[12px] font-bold bg-rose-600 text-white hover:bg-rose-700">모드 저장</button>
+                        <label class="lg:col-span-2 text-xs text-gray-600 font-bold">
+                            저장소 URL
+                            <input id="webhookRepoUrl" type="text" placeholder="https://github.com/org/repo.git"
+                                class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" />
+                        </label>
+                        <label class="lg:col-span-2 text-xs text-gray-600 font-bold">
+                            웹훅 토큰
+                            <input id="webhookToken" type="password" placeholder="X-Webhook-Token"
+                                class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" />
+                        </label>
+                        <button onclick="generateWebhookToken()" class="lg:col-span-1 px-3 py-2 rounded text-[12px] font-bold border border-indigo-200 text-indigo-700 hover:bg-indigo-50">토큰 생성</button>
+                        <button onclick="copyWebhookToken()" class="lg:col-span-1 px-3 py-2 rounded text-[12px] font-bold border border-slate-200 text-slate-700 hover:bg-slate-50">토큰 복사</button>
+                        <button onclick="saveWebhookConfig()" class="lg:col-span-1 px-3 py-2 rounded text-[12px] font-bold bg-indigo-600 text-white hover:bg-indigo-700">저장</button>
+                        <button onclick="checkWebhookConfig()" class="lg:col-span-1 px-3 py-2 rounded text-[12px] font-bold border border-gray-200 text-gray-700 hover:bg-gray-50">확인</button>
+                        <button onclick="triggerWebhookTest()" class="lg:col-span-1 px-3 py-2 rounded text-[12px] font-bold border border-emerald-300 text-emerald-700 hover:bg-emerald-50">테스트</button>
+                    </div>
+                    <div class="mt-2 flex flex-wrap gap-3 text-[11px] text-gray-500 mono">
+                        <span id="runtimeModeInfo">mode: development, build: allowed</span>
+                        <span id="webhookConfigInfo">repo: -, token: -</span>
+                        <span id="webhookRunState">webhook: idle</span>
+                    </div>
+                    <pre id="webhookTailBox" class="mt-2 max-h-[140px] overflow-auto rounded border border-gray-200 bg-gray-50 p-3 text-[11px] mono text-gray-700">대기 중...</pre>
+                </div>
+                <div class="gov-card overflow-hidden">
+                    <div class="flex justify-between items-center px-6 py-4 border-b border-gray-100">
+                        <h3 class="font-bold text-base">변경 이력</h3>
+                        <button onclick="refreshChanges()" class="px-3 py-1 rounded text-[11px] font-bold border border-gray-200 text-gray-600 hover:bg-gray-50">새로고침</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-50 border-y border-gray-200">
+                                <tr>
+                                    <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">시간</th>
+                                    <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">모듈</th>
+                                    <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">유형</th>
+                                    <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">메시지</th>
+                                    <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-center">상태</th>
+                                    <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-right">상세</th>
+                                </tr>
+                            </thead>
+                            <tbody id="changeTable" class="divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ Ops Deploy Tab ============ -->
+            <div id="content-ops-deploy" class="tab-content hidden">
+                <div class="gov-card mb-6 px-6 py-5">
+                    <div class="flex items-center justify-between gap-3">
+                        <h2 class="text-lg font-bold flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[var(--kr-gov-blue)]">cloud_upload</span>
+                            운영 배포 제어
+                        </h2>
+                        <span id="remoteModeBadge" class="px-2 py-0.5 rounded text-[11px] bg-gray-100 text-gray-700 mono">mode: development</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">개발 서버에서만 원격 배포 실행 가능. 운영 모드에서는 차단됩니다.</p>
+                    <div class="mt-4 grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
+                        <label class="text-xs font-bold text-gray-600 md:col-span-2">Host
+                            <input id="remoteHost" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="10.0.0.10" />
+                        </label>
+                        <label class="text-xs font-bold text-gray-600">Port
+                            <input id="remotePort" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="22" />
+                        </label>
+                        <label class="text-xs font-bold text-gray-600">User
+                            <input id="remoteUser" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="ubuntu" />
+                        </label>
+                        <label class="text-xs font-bold text-gray-600 md:col-span-2">SSH Key Path
+                            <input id="remoteKeyPath" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="~/.ssh/id_rsa" />
+                        </label>
+                        <label class="text-xs font-bold text-gray-600 md:col-span-2">Password(Optional)
+                            <input id="remotePassword" type="password" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="ssh password" />
+                        </label>
+                        <label class="text-xs font-bold text-gray-600 md:col-span-2">Remote Dir
+                            <input id="remoteDir" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" th:placeholder="${appRoot}" placeholder="/opt/carbosys" />
+                        </label>
+                        <label class="text-xs font-bold text-gray-600 md:col-span-1">Container
+                            <input id="remoteContainerName" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="carbosys-app" />
+                        </label>
+                        <label class="text-xs font-bold text-gray-600 md:col-span-1">Manager URL
+                            <input id="remoteManagerUrl" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="http://localhost:18030" />
+                        </label>
+                    </div>
+                    <div class="mt-3 flex flex-wrap gap-2 text-xs">
+                        <label class="inline-flex items-center gap-2">
+                            웹훅 배포 모드
+                            <select id="remoteWebhookDeployMode" class="text-xs border border-gray-300 rounded px-2 py-1 bg-white">
+                                <option value="jar">JAR 배포+재시작</option>
+                                <option value="bluegreen">Blue/Green 컨테이너</option>
+                            </select>
+                        </label>
+                        <label class="inline-flex items-center gap-2">
+                            <input id="remoteWebhookBuildEnabled" type="checkbox" class="rounded border-gray-300 text-cyan-600" />
+                            웹훅 자동배포(빌드 포함)
+                        </label>
+                        <label class="inline-flex items-center gap-2">
+                            <input id="remoteWebhookDeployOnlyEnabled" type="checkbox" class="rounded border-gray-300 text-indigo-600" />
+                            웹훅 자동배포(빌드 제외)
+                        </label>
+                    </div>
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        <button onclick="saveRemoteConfig()" class="px-3 py-2 rounded text-[12px] font-bold bg-indigo-600 text-white hover:bg-indigo-700">SSH 설정 저장</button>
+                        <button onclick="runRemoteInitialDeploy()" class="px-3 py-2 rounded text-[12px] font-bold border border-cyan-200 text-cyan-700 hover:bg-cyan-50">초기 배포</button>
+                        <button onclick="runRemoteAutoDeployAll(true)" class="px-3 py-2 rounded text-[12px] font-bold border border-emerald-300 text-emerald-700 hover:bg-emerald-50">자동배포(빌드 포함)</button>
+                        <button onclick="runRemoteAutoDeployAll(false)" class="px-3 py-2 rounded text-[12px] font-bold border border-amber-300 text-amber-700 hover:bg-amber-50">자동배포(빌드 제외)</button>
+                        <button onclick="runRemoteSourceDeploy()" class="px-3 py-2 rounded text-[12px] font-bold border border-sky-300 text-sky-700 hover:bg-sky-50">소스코드 배포</button>
+                        <button onclick="runRemoteBuildOnly()" class="px-3 py-2 rounded text-[12px] font-bold border border-violet-300 text-violet-700 hover:bg-violet-50">빌드</button>
+                    </div>
+                    <div class="mt-4 rounded border border-indigo-100 bg-indigo-50 p-3">
+                        <div class="text-xs font-bold text-indigo-700 mb-2">Blue/Green 전환</div>
+                        <div class="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
+                            <input id="bgActiveColor" type="hidden" value="blue" />
+                            <div class="text-xs font-bold text-gray-600">최종 고정 상태
+                                <div class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs bg-gray-50 text-gray-700">blue (9000) 유지 / green (9001) 자동 종료</div>
+                            </div>
+                            <label class="text-xs font-bold text-gray-600 md:col-span-2">Blue Compose
+                                <input id="composeBlueFile" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="docker-compose.blue.yml" />
+                            </label>
+                            <label class="text-xs font-bold text-gray-600 md:col-span-2">Green Compose
+                                <input id="composeGreenFile" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="docker-compose.green.yml" />
+                            </label>
+                            <label class="text-xs font-bold text-gray-600">Base Services
+                                <input id="bgBaseServices" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="eureka-server config-server gateway-server" />
+                            </label>
+                            <label class="text-xs font-bold text-gray-600">Home Service
+                                <input id="bgHomeService" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="egov-home" />
+                            </label>
+                            <label class="text-xs font-bold text-gray-600">Manager Service
+                                <input id="bgManagerService" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="egov-msa-manager" />
+                            </label>
+                            <label class="text-xs font-bold text-gray-600 md:col-span-2">Nginx Switch Cmd ({color})
+                                <input id="bgNginxSwitchCmd" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="ln -sfn /etc/nginx/upstream-{color}.conf /etc/nginx/upstream.conf" />
+                            </label>
+                            <label class="text-xs font-bold text-gray-600 md:col-span-2">Nginx Reload Cmd
+                                <input id="bgNginxReloadCmd" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="nginx -s reload" />
+                            </label>
+                            <label class="text-xs font-bold text-gray-600">Blue Health URL
+                                <input id="bgBlueHealthUrl" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="http://localhost:9000/actuator/health" />
+                            </label>
+                            <label class="text-xs font-bold text-gray-600">Green Health URL
+                                <input id="bgGreenHealthUrl" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="http://localhost:9001/actuator/health" />
+                            </label>
+                        </div>
+                        <div class="mt-3 flex flex-wrap gap-2 text-xs">
+                            <label class="inline-flex items-center gap-2"><input id="bgHomeOnly" type="checkbox" class="rounded border-gray-300 text-indigo-600" checked /> EgovHome만 기동</label>
+                            <label class="inline-flex items-center gap-2"><input id="bgIncludeManager" type="checkbox" class="rounded border-gray-300 text-indigo-600" checked /> MsaManager 포함</label>
+                            <button onclick="runBlueGreenDeploy()" class="px-3 py-2 rounded text-[12px] font-bold border border-indigo-300 text-indigo-700 hover:bg-indigo-100">Blue/Green 실행 (최종 9000 유지)</button>
+                            <button onclick="runRemoteDockerColorUp('blue')" class="px-3 py-2 rounded text-[12px] font-bold border border-blue-300 text-blue-700 hover:bg-blue-100">도커 블루(9000) 실행</button>
+                            <button onclick="runRemoteDockerColorUp('green')" class="px-3 py-2 rounded text-[12px] font-bold border border-emerald-300 text-emerald-700 hover:bg-emerald-100">도커 그린(9001) 실행</button>
+                            <button onclick="runRemoteNginxAction('blue')" class="px-3 py-2 rounded text-[12px] font-bold border border-slate-300 text-slate-700 hover:bg-slate-100">nginx blue 전환+reload</button>
+                            <button onclick="runRemoteNginxAction('green')" class="px-3 py-2 rounded text-[12px] font-bold border border-slate-300 text-slate-700 hover:bg-slate-100">nginx green 전환+reload</button>
+                            <button onclick="runRemoteNginxAction('reload')" class="px-3 py-2 rounded text-[12px] font-bold border border-slate-300 text-slate-700 hover:bg-slate-100">nginx reload</button>
+                        </div>
+                    </div>
+                    <div class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                        <label class="text-xs font-bold text-gray-600 md:col-span-2">모듈 선택
+                            <select id="remoteModuleSelect" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs"></select>
+                        </label>
+                        <button onclick="runRemoteDeploySelected(true)" class="px-3 py-2 rounded text-[12px] font-bold border border-emerald-300 text-emerald-700 hover:bg-emerald-50">빌드+JAR 배포+무중단</button>
+                        <button onclick="runRemoteDeploySelected(false)" class="px-3 py-2 rounded text-[12px] font-bold border border-amber-300 text-amber-700 hover:bg-amber-50">JAR 배포+무중단</button>
+                    </div>
+                    <div class="mt-2 text-[11px] text-gray-500 mono" id="remoteConfigInfo">remote: -</div>
+                    <pre id="remoteDeployTailBox" class="mt-2 max-h-[180px] overflow-auto rounded border border-gray-200 bg-gray-50 p-3 text-[11px] mono text-gray-700">대기 중...</pre>
+                </div>
+            </div>
+
+            <!-- ============ Logs Tab ============ -->
+            <div id="content-logs" class="tab-content hidden">
+                <div id="criticalBanner" class="hidden mb-4 px-4 py-3 rounded-lg border border-red-300 bg-red-50 text-red-800">
+                    <div class="flex items-center justify-between">
+                        <div class="font-bold flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[18px]">warning</span>
+                            중대 오류 감지
+                        </div>
+                        <span id="criticalCount" class="text-xs font-black"></span>
+                    </div>
+                    <div id="criticalHead" class="mt-2 text-xs mono"></div>
+                </div>
+
+                <div class="gov-card mb-6 px-6 py-4">
+                    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <div class="text-sm font-bold">모듈별 로그 목록 (실시간)</div>
+                            <div class="text-xs text-gray-500 mt-1">범위: 현재 시점 이후 실시간</div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="resetLiveLogs()" class="px-3 py-2 rounded text-[12px] font-bold bg-rose-600 text-white hover:bg-rose-700">실시간 로그 초기화</button>
+                            <span class="text-xs text-gray-400 mono" th:text="'파일: ' + ${appRoot} + '/logs/module-log-events.jsonl'">파일: /opt/carbosys/logs/module-log-events.jsonl</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="moduleLogGrid"></div>
+            </div>
+
+            <!-- ============ Log History Tab ============ -->
+            <div id="content-log-history" class="tab-content hidden">
+                <div id="historyCriticalBanner" class="hidden mb-4 px-4 py-3 rounded-lg border border-red-300 bg-red-50 text-red-800">
+                    <div class="flex items-center justify-between">
+                        <div class="font-bold flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[18px]">history</span>
+                            과거 중대 오류 분석
+                        </div>
+                        <span id="historyCriticalCount" class="text-xs font-black"></span>
+                    </div>
+                    <div id="historyCriticalHead" class="mt-2 text-xs mono"></div>
+                </div>
+
+                <div class="gov-card mb-6 px-6 py-4">
+                    <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <div class="text-sm font-bold">아카이브 로그 모니터링</div>
+                            <div id="historyRangeLabel" class="text-xs text-gray-500 mt-1">범위: 전체</div>
+                        </div>
+                        <span class="text-xs text-gray-400 mono">파일: module-log-events*.jsonl / critical-events*.jsonl</span>
+                    </div>
+                    <div class="mt-4 flex flex-col gap-3">
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="setLogQuickRange('1h')" class="px-3 py-1 rounded text-[11px] font-bold border border-gray-200 text-gray-700 hover:bg-gray-50">최근 1시간</button>
+                            <button onclick="setLogQuickRange('6h')" class="px-3 py-1 rounded text-[11px] font-bold border border-gray-200 text-gray-700 hover:bg-gray-50">최근 6시간</button>
+                            <button onclick="setLogQuickRange('24h')" class="px-3 py-1 rounded text-[11px] font-bold border border-gray-200 text-gray-700 hover:bg-gray-50">최근 24시간</button>
+                            <button onclick="setLogQuickRange('today')" class="px-3 py-1 rounded text-[11px] font-bold border border-gray-200 text-gray-700 hover:bg-gray-50">오늘</button>
+                            <button onclick="setLogQuickRange('all')" class="px-3 py-1 rounded text-[11px] font-bold border border-gray-200 text-gray-700 hover:bg-gray-50">전체</button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+                            <label class="text-xs text-gray-600 font-bold">
+                                시작 시간
+                                <input id="logFromTime" type="datetime-local" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" />
+                            </label>
+                            <label class="text-xs text-gray-600 font-bold">
+                                종료 시간
+                                <input id="logToTime" type="datetime-local" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" />
+                            </label>
+                            <button onclick="applyLogRange()" class="px-3 py-2 rounded text-[12px] font-bold bg-cyan-600 text-white hover:bg-cyan-700">적용</button>
+                            <button onclick="clearLogRange()" class="px-3 py-2 rounded text-[12px] font-bold border border-gray-200 text-gray-700 hover:bg-gray-50">초기화</button>
+                            <div class="text-[11px] text-gray-500">과거 로그 분석은 적용 버튼 클릭 시에만 조회됩니다.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    <div class="gov-card overflow-hidden">
+                        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <h3 class="font-bold text-base flex items-center gap-2">
+                                <span class="material-symbols-outlined text-cyan-600">monitoring</span>
+                                과거 컨트롤러 사용량 TOP
+                            </h3>
+                            <span class="text-xs text-gray-400">archive</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 border-y border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">컨트롤러/경로</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-right">호출수</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyControllerStatTable" class="divide-y divide-gray-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="gov-card overflow-hidden">
+                        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <h3 class="font-bold text-base flex items-center gap-2">
+                                <span class="material-symbols-outlined text-rose-600">bug_report</span>
+                                과거 오류 다발 지점 TOP
+                            </h3>
+                            <span class="text-xs text-gray-400">archive</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 border-y border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">오류 발생 위치</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-right">발생수</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyErrorStatTable" class="divide-y divide-gray-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="historyModuleLogGrid"></div>
+            </div>
+
+            <!-- ============ Analytics Tab ============ -->
+            <div id="content-analytics" class="tab-content hidden">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="gov-card overflow-hidden">
+                        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <div>
+                                <h3 class="font-bold text-base flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-cyan-600">monitoring</span>
+                                    컨트롤러 사용량 TOP
+                                </h3>
+                                <p id="analyticsRangeLabel" class="text-xs text-gray-500 mt-1">기간: 전체</p>
+                            </div>
+                            <span class="text-xs text-gray-400">logs 기반</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 border-y border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">컨트롤러/경로</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-right">호출수</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="controllerStatTable" class="divide-y divide-gray-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="gov-card overflow-hidden">
+                        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <h3 class="font-bold text-base flex items-center gap-2">
+                                <span class="material-symbols-outlined text-rose-600">bug_report</span>
+                                오류 다발 지점 TOP
+                            </h3>
+                            <span class="text-xs text-gray-400">source/message 기반</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 border-y border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">오류 발생 위치</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-right">발생수</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="errorStatTable" class="divide-y divide-gray-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ Security Tab ============ -->
+            <div id="content-security" class="tab-content hidden">
+                <div class="gov-card overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                        <h3 class="font-bold text-base flex items-center gap-2">
+                            <span class="material-symbols-outlined text-rose-600">shield_lock</span>
+                            보안 감지 프로그램
+                        </h3>
+                        <span class="text-xs text-gray-400">critical-events 기반</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                            <div class="rounded border border-red-200 bg-red-50 px-4 py-3">
+                                <div class="text-[11px] text-red-500 font-bold uppercase">Critical</div>
+                                <div id="secCountCritical" class="mt-1 text-lg font-black text-red-700 mono">0</div>
+                            </div>
+                            <div class="rounded border border-orange-200 bg-orange-50 px-4 py-3">
+                                <div class="text-[11px] text-orange-500 font-bold uppercase">High</div>
+                                <div id="secCountHigh" class="mt-1 text-lg font-black text-orange-700 mono">0</div>
+                            </div>
+                            <div class="rounded border border-amber-200 bg-amber-50 px-4 py-3">
+                                <div class="text-[11px] text-amber-500 font-bold uppercase">Medium</div>
+                                <div id="secCountMedium" class="mt-1 text-lg font-black text-amber-700 mono">0</div>
+                            </div>
+                            <div class="rounded border border-gray-200 bg-gray-50 px-4 py-3">
+                                <div class="text-[11px] text-gray-500 font-bold uppercase">Low</div>
+                                <div id="secCountLow" class="mt-1 text-lg font-black text-gray-700 mono">0</div>
+                            </div>
+                            <div class="rounded border border-indigo-200 bg-indigo-50 px-4 py-3">
+                                <div class="text-[11px] text-indigo-500 font-bold uppercase">Action Required</div>
+                                <div id="secCountActionRequired" class="mt-1 text-lg font-black text-indigo-700 mono">0</div>
+                            </div>
+                        </div>
+                        <div class="rounded-lg border border-rose-200 bg-rose-50 p-4">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-rose-600 text-[18px]">emergency</span>
+                                    <div class="text-sm font-black text-rose-700">즉시 조치 큐</div>
+                                    <div id="secActionQueueCount" class="px-2 py-0.5 rounded bg-rose-100 text-rose-700 text-[11px] font-bold mono">0</div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button id="secFilterAll" onclick="setSecurityFilter('all')" class="px-2 py-1 rounded border border-gray-300 bg-white text-gray-700 text-[11px] font-bold">전체</button>
+                                    <button id="secFilterRequired" onclick="setSecurityFilter('required')" class="px-2 py-1 rounded border border-indigo-500 bg-indigo-600 text-white text-[11px] font-bold">액션 필요</button>
+                                    <button id="secFilterImmediate" onclick="setSecurityFilter('immediate')" class="px-2 py-1 rounded border border-rose-300 bg-rose-100 text-rose-700 text-[11px] font-bold">즉시 조치</button>
+                                </div>
+                            </div>
+                            <div id="securityActionQueue" class="mt-3 space-y-2"></div>
+                        </div>
+                        <div class="overflow-x-auto border border-gray-100 rounded">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 border-y border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">시간</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">모듈</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">조치</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">등급</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">카테고리</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">내용</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="securityTable" class="divide-y divide-gray-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ Security Explorer Tab ============ -->
+            <div id="content-security-explorer" class="tab-content hidden">
+                <div class="gov-card overflow-hidden mb-6">
+                    <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                        <h3 class="font-bold text-base flex items-center gap-2">
+                            <span class="material-symbols-outlined text-indigo-600">manage_search</span>
+                            보안 소스/로그 탐색 제어
+                        </h3>
+                        <span class="text-xs text-gray-400">수동 실행 모드</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div class="flex flex-wrap items-center gap-4">
+                            <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                                <input id="sourceScanEnabledToggle" type="checkbox" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" onchange="toggleSourceScanEnabled(this.checked)" />
+                                소스 보안 결과 병합 활성화
+                            </label>
+                            <span id="sourceScanStateText" class="px-2 py-0.5 rounded text-[11px] bg-gray-100 text-gray-600">OFF</span>
+                            <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                                탐지 프로파일
+                                <select id="sourceScanProfileSelect" onchange="changeSourceScanProfile(this.value)" class="text-xs border border-gray-300 rounded px-2 py-1 bg-white">
+                                    <option value="strict">strict (강탐지)</option>
+                                    <option value="balanced">balanced (노이즈 컷)</option>
+                                    <option value="paranoid">paranoid (초강탐지)</option>
+                                </select>
+                            </label>
+                            <span id="sourceScanLastScanAt" class="text-xs text-gray-500 mono">마지막 스캔: -</span>
+                        </div>
+                        <div class="rounded border border-amber-100 bg-amber-50 px-4 py-3">
+                            <div class="text-xs font-bold text-amber-700 mb-2">상용급 옵션</div>
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-2 text-xs text-gray-700">
+                                <label class="inline-flex items-center gap-2"><input id="optIncludeEventEngine" type="checkbox" onchange="setSecurityAdvancedOptions()" /> 이벤트 엔진 포함</label>
+                                <label class="inline-flex items-center gap-2"><input id="optIncludeExternalEngine" type="checkbox" onchange="setSecurityAdvancedOptions()" /> 외부 API 엔진 포함</label>
+                                <label class="inline-flex items-center gap-2"><input id="optNewOnlyMode" type="checkbox" onchange="setSecurityAdvancedOptions()" /> 신규 이슈만 보기</label>
+                                <label class="inline-flex items-center gap-2"><input id="optGateCritical" type="checkbox" onchange="setSecurityAdvancedOptions()" /> CI Gate: Critical 차단</label>
+                                <label class="inline-flex items-center gap-2"><input id="optGateHigh" type="checkbox" onchange="setSecurityAdvancedOptions()" /> CI Gate: High 차단</label>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="rebuildSecurityBaseline()" class="px-2 py-1 rounded border border-amber-300 bg-white text-amber-700 font-bold">베이스라인 재생성</button>
+                                    <span id="securityBaselineInfo" class="mono text-[11px] text-amber-700">baseline: 0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-3">
+                            <button onclick="runSecurityExplorer('source')" id="runSourceScanBtn" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold">소스 탐색 실행</button>
+                            <button onclick="runSecurityExplorer('logs')" id="runLogScanBtn" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold">로그 탐색 실행</button>
+                            <button onclick="runSecurityExplorer('all')" id="runAllScanBtn" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-800 text-white text-sm font-bold">소스+로그 탐색 실행</button>
+                        </div>
+
+                        <div class="rounded border border-indigo-100 bg-indigo-50 px-4 py-3">
+                            <div class="flex items-center justify-between text-xs text-indigo-700 font-bold">
+                                <span id="securityExplorePhase">phase: idle</span>
+                                <span id="securityExploreEta">ETA: -</span>
+                            </div>
+                            <div class="mt-2 h-2 bg-indigo-100 rounded-full overflow-hidden">
+                                <div id="securityExploreBar" class="h-2 bg-indigo-600 rounded-full transition-all duration-300" style="width:0%"></div>
+                            </div>
+                            <div class="mt-2 flex flex-wrap items-center gap-4 text-[11px] text-indigo-800 mono">
+                                <span id="securityExploreFiles">files: 0/0</span>
+                                <span id="securityExploreMatched">matched: 0</span>
+                                <span id="securityExploreElapsed">elapsed: 0s</span>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                            <div class="lg:col-span-3 rounded-lg border border-[#2a2f44] bg-[#0f1320] p-4">
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="text-xs text-emerald-300 font-bold mono">Security Explorer Terminal</div>
+                                    <div id="securityExploreCurrentTarget" class="text-[11px] text-cyan-300 mono truncate max-w-[70%] text-right">-</div>
+                                </div>
+                                <pre id="securityExploreTerminal" class="h-[260px] overflow-auto rounded bg-[#090c16] border border-[#1f2438] p-3 text-[11px] text-emerald-300 mono whitespace-pre-wrap">대기 중...</pre>
+                            </div>
+                            <div class="lg:col-span-2 rounded-lg border border-gray-200 bg-white">
+                                <div class="px-4 py-3 border-b border-gray-100 text-sm font-bold text-gray-700">탐색 타임라인</div>
+                                <div id="securityExploreTimeline" class="h-[300px] overflow-auto divide-y divide-gray-100"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ Traffic Tab ============ -->
+            <div id="content-traffic" class="tab-content hidden">
+                <div class="gov-card overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                        <h3 class="font-bold text-base flex items-center gap-2">
+                            <span class="material-symbols-outlined text-amber-600">monitoring</span>
+                            트래픽 부하 감지 프로그램
+                        </h3>
+                        <span id="trafficUpdatedAt" class="text-xs text-gray-400 mono">-</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div class="rounded border border-cyan-200 bg-cyan-50 px-4 py-3">
+                                <div class="text-[11px] text-cyan-600 font-bold uppercase">Running</div>
+                                <div id="trafficRunningModules" class="mt-1 text-lg font-black text-cyan-700 mono">0</div>
+                            </div>
+                            <div class="rounded border border-indigo-200 bg-indigo-50 px-4 py-3">
+                                <div class="text-[11px] text-indigo-600 font-bold uppercase">Memory(MB)</div>
+                                <div id="trafficTotalMemory" class="mt-1 text-lg font-black text-indigo-700 mono">0</div>
+                            </div>
+                            <div class="rounded border border-emerald-200 bg-emerald-50 px-4 py-3">
+                                <div class="text-[11px] text-emerald-600 font-bold uppercase">Active Users</div>
+                                <div id="trafficActiveUsers" class="mt-1 text-lg font-black text-emerald-700 mono">0</div>
+                            </div>
+                            <div class="rounded border border-amber-200 bg-amber-50 px-4 py-3">
+                                <div class="text-[11px] text-amber-600 font-bold uppercase">CPU Capacity</div>
+                                <div id="trafficCpuCapacity" class="mt-1 text-lg font-black text-amber-700 mono">0</div>
+                                <div id="trafficCpuMeta" class="text-[10px] text-amber-600 mono">0 cores</div>
+                            </div>
+                        </div>
+
+                        <div class="gov-card overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+                                <div class="text-sm font-bold text-gray-700">실측 부하 테스트</div>
+                                <div class="flex items-center gap-2">
+                                    <span id="trafficLoadStatusBadge" class="status-badge bg-gray-100 text-gray-600">대기</span>
+                                    <button id="trafficLoadRunBtn" onclick="runTrafficLoadTest()" class="px-3 py-2 rounded bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 flex items-center gap-1">
+                                        <span class="material-symbols-outlined text-[16px]">bolt</span>
+                                        부하 테스트 실행
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="p-4 space-y-3">
+                                <div class="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                                    <label class="text-[11px] text-gray-600 font-bold">최대 사용자
+                                        <input id="trafficLoadMaxUsers" type="number" min="10" max="500" step="10" value="120" class="mt-1 w-full px-2 py-1.5 rounded border border-gray-200 text-xs mono">
+                                    </label>
+                                    <label class="text-[11px] text-gray-600 font-bold">증가 폭(VU)
+                                        <input id="trafficLoadStepUsers" type="number" min="5" max="200" step="5" value="20" class="mt-1 w-full px-2 py-1.5 rounded border border-gray-200 text-xs mono">
+                                    </label>
+                                    <label class="text-[11px] text-gray-600 font-bold">단계 시간(초)
+                                        <input id="trafficLoadStepSeconds" type="number" min="1" max="20" step="1" value="3" class="mt-1 w-full px-2 py-1.5 rounded border border-gray-200 text-xs mono">
+                                    </label>
+                                    <label class="text-[11px] text-gray-600 font-bold">타임아웃(ms)
+                                        <input id="trafficLoadTimeoutMs" type="number" min="300" max="15000" step="100" value="2500" class="mt-1 w-full px-2 py-1.5 rounded border border-gray-200 text-xs mono">
+                                    </label>
+                                </div>
+                                <div class="text-[11px] text-gray-500 mono">
+                                    <span id="trafficLoadTarget">target: -</span>
+                                    <span class="mx-2">|</span>
+                                    <span id="trafficLoadConfig">config: -</span>
+                                    <span class="mx-2">|</span>
+                                    <span id="trafficLoadRunAt">last: -</span>
+                                </div>
+                                <div class="grid grid-cols-2 lg:grid-cols-6 gap-2">
+                                    <div class="rounded border border-cyan-200 bg-cyan-50 px-3 py-2">
+                                        <div class="text-[10px] text-cyan-600 font-bold uppercase">Max Users</div>
+                                        <div id="trafficMeterMaxUsers" class="mt-1 text-base font-black text-cyan-700 mono">0</div>
+                                    </div>
+                                    <div class="rounded border border-indigo-200 bg-indigo-50 px-3 py-2">
+                                        <div class="text-[10px] text-indigo-600 font-bold uppercase">Peak RPS</div>
+                                        <div id="trafficMeterPeakRps" class="mt-1 text-base font-black text-indigo-700 mono">0</div>
+                                    </div>
+                                    <div class="rounded border border-emerald-200 bg-emerald-50 px-3 py-2">
+                                        <div class="text-[10px] text-emerald-600 font-bold uppercase">Avg(ms)</div>
+                                        <div id="trafficMeterAvgMs" class="mt-1 text-base font-black text-emerald-700 mono">0</div>
+                                    </div>
+                                    <div class="rounded border border-amber-200 bg-amber-50 px-3 py-2">
+                                        <div class="text-[10px] text-amber-600 font-bold uppercase">P95(ms)</div>
+                                        <div id="trafficMeterP95Ms" class="mt-1 text-base font-black text-amber-700 mono">0</div>
+                                    </div>
+                                    <div class="rounded border border-rose-200 bg-rose-50 px-3 py-2">
+                                        <div class="text-[10px] text-rose-600 font-bold uppercase">Error(%)</div>
+                                        <div id="trafficMeterErrorPct" class="mt-1 text-base font-black text-rose-700 mono">0</div>
+                                    </div>
+                                    <div class="rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                                        <div class="text-[10px] text-slate-600 font-bold uppercase">Total Req</div>
+                                        <div id="trafficMeterTotalReq" class="mt-1 text-base font-black text-slate-700 mono">0</div>
+                                    </div>
+                                </div>
+                                <div class="overflow-x-auto rounded border border-gray-100">
+                                    <table class="w-full text-left">
+                                        <thead class="bg-gray-50 border-b border-gray-200">
+                                            <tr>
+                                                <th class="px-3 py-2 text-[11px] font-bold text-gray-500 uppercase">VU</th>
+                                                <th class="px-3 py-2 text-[11px] font-bold text-gray-500 uppercase text-right">Req</th>
+                                                <th class="px-3 py-2 text-[11px] font-bold text-gray-500 uppercase text-right">RPS</th>
+                                                <th class="px-3 py-2 text-[11px] font-bold text-gray-500 uppercase text-right">Avg(ms)</th>
+                                                <th class="px-3 py-2 text-[11px] font-bold text-gray-500 uppercase text-right">P95(ms)</th>
+                                                <th class="px-3 py-2 text-[11px] font-bold text-gray-500 uppercase text-right">Error(%)</th>
+                                                <th class="px-3 py-2 text-[11px] font-bold text-gray-500 uppercase text-center">Stable</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="trafficLoadStageTable" class="divide-y divide-gray-100">
+                                            <tr><td colspan="7" class="px-3 py-4 text-center text-xs text-gray-400">실행 이력이 없습니다</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="gov-card overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-100 text-sm font-bold">모듈 부하 모니터링</div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left">
+                                    <thead class="bg-gray-50 border-y border-gray-200">
+                                        <tr>
+                                            <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">모듈</th>
+                                            <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-center">상태</th>
+                                            <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-right">메모리(MB)</th>
+                                            <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-right">CPU(%)</th>
+                                            <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-right">사용자수(연결)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="trafficModuleTable" class="divide-y divide-gray-100"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="gov-card overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-100 text-sm font-bold">진입 가능한 컨트롤러 경로</div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left">
+                                    <thead class="bg-gray-50 border-y border-gray-200">
+                                        <tr>
+                                            <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">모듈</th>
+                                            <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">METHOD</th>
+                                            <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">경로</th>
+                                            <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">설명</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="trafficControllerTable" class="divide-y divide-gray-100"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ Accessibility Tab ============ -->
+            <div id="content-accessibility" class="tab-content hidden">
+                <div class="gov-card overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                        <h3 class="font-bold text-base flex items-center gap-2">
+                            <span class="material-symbols-outlined text-emerald-600">universal_local</span>
+                            웹 접근성 감지 프로그램
+                        </h3>
+                        <span class="text-xs text-gray-400">템플릿 정적 검사</span>
+                    </div>
+                    <div class="p-6 space-y-4">
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div class="rounded border border-red-200 bg-red-50 px-4 py-3">
+                                <div class="text-[11px] text-red-600 font-bold uppercase">High</div>
+                                <div id="accCountHigh" class="mt-1 text-lg font-black text-red-700 mono">0</div>
+                            </div>
+                            <div class="rounded border border-amber-200 bg-amber-50 px-4 py-3">
+                                <div class="text-[11px] text-amber-600 font-bold uppercase">Medium</div>
+                                <div id="accCountMedium" class="mt-1 text-lg font-black text-amber-700 mono">0</div>
+                            </div>
+                            <div class="rounded border border-gray-200 bg-gray-50 px-4 py-3">
+                                <div class="text-[11px] text-gray-600 font-bold uppercase">Low</div>
+                                <div id="accCountLow" class="mt-1 text-lg font-black text-gray-700 mono">0</div>
+                            </div>
+                            <div class="rounded border border-cyan-200 bg-cyan-50 px-4 py-3">
+                                <div class="text-[11px] text-cyan-600 font-bold uppercase">Scanned Files</div>
+                                <div id="accScannedFiles" class="mt-1 text-lg font-black text-cyan-700 mono">0</div>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto border border-gray-100 rounded">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 border-y border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">등급</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">코드</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">파일</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase text-right">라인</th>
+                                        <th class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">수정 내역</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="accessibilityTable" class="divide-y divide-gray-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Section -->
+            <div id="logSection" class="hidden mt-8 transition-all duration-500 opacity-0 scale-95">
+                <div class="gov-card border-l-4 border-[var(--kr-gov-blue)]">
+                    <div class="flex justify-between items-center mb-4 px-6 pt-6">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-blue-500">terminal</span>
+                            <h3 id="logTitle" class="font-bold text-lg">시스템 로그</h3>
+                        </div>
+                        <button onclick="closeLogs()" class="p-1 hover:bg-gray-100 rounded-full">
+                            <span class="material-symbols-outlined text-gray-400">close</span>
+                        </button>
+                    </div>
+                    <div id="logBox" class="log-box mx-6 mb-6"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script th:inline="javascript">
+        let modules = [];
+        let allMappings = [];
+        let changeHistory = [];
+        let expandedChangeKeys = new Set();
+        let moduleLogs = [];
+        let criticalLogs = [];
+        let controllerStats = [];
+        let errorStats = [];
+        let historyModuleLogs = [];
+        let historyCriticalLogs = [];
+        let historyControllerStats = [];
+        let historyErrorStats = [];
+        let securityViolations = [];
+        let securityFilterMode = 'required';
+        let securityExploreStatus = null;
+        let trafficOverview = null;
+        let trafficLoadStatus = null;
+        let accessibilityIssues = [];
+        const appRoot = /*[[${appRoot}]]*/ '/opt/carbosys';
+        let runtimeConfig = {
+            serverMode: 'development',
+            dangerousOpsBlocked: false,
+            buildAllowed: true
+        };
+        let remoteDeployConfig = {};
+        let webhookTokenPlain = '';
+        const webhookTokenStorageKey = 'msaWebhookTokenPlain';
+        const tabStorageKey = 'msaManagerActiveTab';
+        function loadWebhookTokenCache() {
+            try {
+                const ss = sessionStorage.getItem(webhookTokenStorageKey) || '';
+                const ls = localStorage.getItem(webhookTokenStorageKey) || '';
+                return ss || ls || '';
+            } catch (e) {
+                return '';
+            }
+        }
+        function saveWebhookTokenCache(token) {
+            try {
+                if (token) {
+                    sessionStorage.setItem(webhookTokenStorageKey, token);
+                    localStorage.setItem(webhookTokenStorageKey, token);
+                } else {
+                    sessionStorage.removeItem(webhookTokenStorageKey);
+                    localStorage.removeItem(webhookTokenStorageKey);
+                }
+            } catch (e) { }
+        }
+        webhookTokenPlain = loadWebhookTokenCache();
+        let logInterval = null;
+        let currentLogId = null;
+        let logRangeFrom = '';
+        let logRangeTo = '';
+
+        /* ── Tabs ── */
+        function showTab(tab) {
+            const contentEl = document.getElementById('content-' + tab);
+            const tabEl = document.getElementById('tab-' + tab);
+            if (!contentEl || !tabEl) return;
+
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            contentEl.classList.remove('hidden');
+            tabEl.classList.add('active');
+            try {
+                localStorage.setItem(tabStorageKey, tab);
+            } catch (e) { }
+            if (tab === 'mappings') refreshMappings();
+            if (tab === 'changes') {
+                refreshRuntimeConfig();
+                refreshAutoDeployStatus();
+                refreshWebhookConfig();
+                refreshWebhookStatus();
+                refreshChanges();
+            }
+            if (tab === 'ops-deploy') refreshOpsDeployTab();
+            if (tab === 'logs') refreshLogTab();
+            if (tab === 'analytics') refreshAnalyticsTab();
+            if (tab === 'security') refreshSecurityTab();
+            if (tab === 'security-explorer') refreshSecurityExplorerTab();
+            if (tab === 'traffic') refreshTrafficTab();
+            if (tab === 'accessibility') refreshAccessibilityTab();
+        }
+
+        function restoreActiveTab() {
+            try {
+                const saved = localStorage.getItem(tabStorageKey);
+                if (saved && document.getElementById('content-' + saved) && document.getElementById('tab-' + saved)) {
+                    showTab(saved);
+                    return;
+                }
+            } catch (e) { }
+            showTab('modules');
+        }
+
+        async function refreshData() {
+            await refreshModules();
+            if (!document.getElementById('content-mappings').classList.contains('hidden')) {
+                await refreshMappings();
+            }
+            if (!document.getElementById('content-changes').classList.contains('hidden')) {
+                await refreshRuntimeConfig();
+                await refreshAutoDeployStatus();
+                await refreshWebhookConfig();
+                await refreshWebhookStatus();
+                await refreshChanges();
+            }
+            if (!document.getElementById('content-ops-deploy').classList.contains('hidden')) {
+                await refreshOpsDeployTab();
+            }
+            if (!document.getElementById('content-logs').classList.contains('hidden')) {
+                await refreshLogTab();
+            }
+            if (!document.getElementById('content-analytics').classList.contains('hidden')) {
+                await refreshAnalyticsTab();
+            }
+            if (!document.getElementById('content-security').classList.contains('hidden')) {
+                await refreshSecurityTab();
+            }
+            if (!document.getElementById('content-security-explorer').classList.contains('hidden')) {
+                await refreshSecurityExplorerTab();
+            }
+            if (!document.getElementById('content-traffic').classList.contains('hidden')) {
+                await refreshTrafficTab();
+            }
+            if (!document.getElementById('content-accessibility').classList.contains('hidden')) {
+                await refreshAccessibilityTab();
+            }
+        }
+
+        function toDateTimeLocalValue(d) {
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+
+        function getLogRangeQuery() {
+            const params = new URLSearchParams();
+            if (logRangeFrom) params.set('from', logRangeFrom);
+            if (logRangeTo) params.set('to', logRangeTo);
+            const q = params.toString();
+            return q ? `?${q}` : '';
+        }
+
+        function rangeText() {
+            if (!logRangeFrom && !logRangeTo) {
+                return '전체';
+            }
+            const fromLabel = logRangeFrom || '...';
+            const toLabel = logRangeTo || '...';
+            return `${fromLabel} ~ ${toLabel}`;
+        }
+
+        function updateLogRangeLabel() {
+            const txt = rangeText();
+            const hEl = document.getElementById('historyRangeLabel');
+            if (hEl) hEl.textContent = `범위: ${txt}`;
+            const chgEl = document.getElementById('changeRangeLabel');
+            if (chgEl) chgEl.textContent = `기간: ${txt}`;
+            const anEl = document.getElementById('analyticsRangeLabel');
+            if (anEl) anEl.textContent = `기간: ${txt}`;
+        }
+
+        function setLogQuickRange(type) {
+            const now = new Date();
+            const fromInput = document.getElementById('logFromTime');
+            const toInput = document.getElementById('logToTime');
+            if (!fromInput || !toInput) return;
+
+            if (type === 'all') {
+                fromInput.value = '';
+                toInput.value = '';
+                applyLogRange();
+                return;
+            }
+
+            let from = new Date(now);
+            if (type === '1h') from.setHours(from.getHours() - 1);
+            else if (type === '6h') from.setHours(from.getHours() - 6);
+            else if (type === '24h') from.setHours(from.getHours() - 24);
+            else if (type === 'today') from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
+            fromInput.value = toDateTimeLocalValue(from);
+            toInput.value = toDateTimeLocalValue(now);
+            applyLogRange();
+        }
+
+        function applyLogRange() {
+            const fromInput = document.getElementById('logFromTime');
+            const toInput = document.getElementById('logToTime');
+            if (!fromInput || !toInput) return;
+
+            if (fromInput.value && toInput.value && new Date(fromInput.value) > new Date(toInput.value)) {
+                showToast('warning', '시작 시간이 종료 시간보다 늦습니다.');
+                return;
+            }
+
+            logRangeFrom = fromInput.value || '';
+            logRangeTo = toInput.value || '';
+            updateLogRangeLabel();
+            refreshChanges();
+            refreshLogHistoryTab();
+            refreshAnalyticsTab();
+        }
+
+        function clearLogRange() {
+            const fromInput = document.getElementById('logFromTime');
+            const toInput = document.getElementById('logToTime');
+            if (fromInput) fromInput.value = '';
+            if (toInput) toInput.value = '';
+            logRangeFrom = '';
+            logRangeTo = '';
+            updateLogRangeLabel();
+            refreshChanges();
+            refreshAnalyticsTab();
+        }
+
+        /* ── Modules ── */
+        /* ── Modules ── */
+        async function refreshModules() {
+            try {
+                const res = await fetch('/admin/msa/api/modules');
+                modules = await res.json();
+
+                // If mappings are already loaded, we can group modules by their primary path segment
+                if (allMappings.length === 0) {
+                    const mRes = await fetch('/admin/msa/api/mappings');
+                    allMappings = await mRes.json();
+                }
+
+                renderModuleTable();
+            } catch (e) { console.error(e); }
+        }
+
+        function renderModuleTable() {
+            const tbody = document.getElementById('moduleTable');
+
+            // Group modules by their primary path prefix from mappings
+            const grouped = {};
+            modules.forEach(m => {
+                const mapping = allMappings.find(map => map.module === m.id);
+                const group = mapping ? (mapping.path.split('/')[1] || 'root') : 'system';
+                if (!grouped[group]) grouped[group] = [];
+                grouped[group].push(m);
+            });
+
+            const groupKeys = Object.keys(grouped).sort();
+
+            tbody.innerHTML = groupKeys.map(group => {
+                const header = `
+                    <tr class="bg-gray-50/50">
+                        <td colspan="6" class="px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-widest border-y border-gray-100">
+                            <span class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-[14px]">folder</span>
+                                /${group === 'root' ? '' : group} 관련 모듈
+                            </span>
+                        </td>
+                    </tr>`;
+
+                const rows = grouped[group].map(m => {
+                    let badge = 'bg-gray-100 text-gray-500';
+                    let label = '중지됨';
+                    if (m.status === 'running') { badge = 'bg-emerald-100 text-emerald-700'; label = '실행 중'; }
+                    if (m.status === 'starting') { badge = 'bg-blue-100 text-blue-700 animate-pulse'; label = '시작 중'; }
+                    if (m.status === 'error') { badge = 'bg-red-100 text-red-700'; label = '오류'; }
+                    const canManage = !!m.javaRunnable;
+                    const buildHidden = (m.status === 'starting' || !canManage || !runtimeConfig.buildAllowed) ? 'hidden' : '';
+
+                    return `
+                    <tr class="hover:bg-blue-50/30 transition-colors">
+                        <td class="px-4 py-3 font-bold text-sm text-[var(--kr-gov-blue)] mono">${m.id}</td>
+                        <td class="px-4 py-3 text-xs text-gray-600">${m.name}</td>
+                        <td class="px-4 py-3 text-center mono text-xs font-bold text-emerald-600">${m.port || '-'}</td>
+                        <td class="px-4 py-3 text-center"><span class="status-badge ${badge}">${label}</span></td>
+                        <td class="px-4 py-3 text-center mono text-xs text-gray-400">${m.pid || '-'}</td>
+                        <td class="px-4 py-3 text-right space-x-1">
+                            <button onclick="startMod('${m.id}')" class="px-3 py-1 rounded text-[11px] font-bold border border-emerald-200 text-emerald-600 hover:bg-emerald-50 ${(m.status !== 'stopped' || !canManage) ? 'hidden' : ''}">시작</button>
+                            <button onclick="stopMod('${m.id}')" class="px-3 py-1 rounded text-[11px] font-bold border border-red-200 text-red-600 hover:bg-red-50 ${(m.status === 'stopped' || !canManage) ? 'hidden' : ''}">중지</button>
+                            <button onclick="restartMod('${m.id}')" class="px-3 py-1 rounded text-[11px] font-bold border border-amber-200 text-amber-700 hover:bg-amber-50 ${!canManage ? 'hidden' : ''}">재시작</button>
+                            <button onclick="deployRestartMod('${m.id}')" class="px-3 py-1 rounded text-[11px] font-bold border border-violet-200 text-violet-700 hover:bg-violet-50 ${(m.status === 'starting' || !canManage) ? 'hidden' : ''}">배포+재시작</button>
+                            <button onclick="deployZeroDowntimeMod('${m.id}')" class="px-3 py-1 rounded text-[11px] font-bold border border-cyan-200 text-cyan-700 hover:bg-cyan-50 ${(m.status === 'starting' || !canManage) ? 'hidden' : ''}">배포+무중단</button>
+                            <button onclick="buildDeployRestartMod('${m.id}')" class="px-3 py-1 rounded text-[11px] font-bold border border-fuchsia-200 text-fuchsia-700 hover:bg-fuchsia-50 ${buildHidden}">빌드+배포+재시작</button>
+                            <button onclick="buildDeployZeroDowntimeMod('${m.id}')" class="px-3 py-1 rounded text-[11px] font-bold border border-sky-200 text-sky-700 hover:bg-sky-50 ${buildHidden}">빌드+무중단</button>
+                            ${!canManage ? '<span class="px-2 py-1 rounded text-[10px] font-bold border border-gray-200 text-gray-400">수동관리</span>' : ''}
+                            <button onclick="showLogs('${m.id}')" class="px-3 py-1 rounded text-[11px] font-bold border border-blue-200 text-blue-600 hover:bg-blue-50">로그</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+
+                return header + rows;
+            }).join('');
+        }
+
+        /* ── Mappings ── */
+        async function refreshMappings() {
+            try {
+                const res = await fetch('/admin/msa/api/mappings');
+                allMappings = await res.json();
+                renderMappings(allMappings);
+            } catch (e) { console.error(e); }
+        }
+
+        function filterMappings() {
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = allMappings.filter(m =>
+                (m.path || '').toLowerCase().includes(q) ||
+                (m.module || '').toLowerCase().includes(q) ||
+                (m.description || '').toLowerCase().includes(q)
+            );
+            renderMappings(filtered);
+        }
+
+        function renderMappings(mappings) {
+            document.getElementById('mappingCount').textContent = `${mappings.length}개`;
+            const container = document.getElementById('mappingAccordion');
+
+            // Grouping mappings by the first path segment
+            const grouped = {};
+            mappings.forEach(m => {
+                const segment = (m.path || '').split('/')[1] || 'root';
+                if (!grouped[segment]) grouped[segment] = [];
+                grouped[segment].push(m);
+            });
+
+            const groupKeys = Object.keys(grouped).sort();
+
+            container.innerHTML = groupKeys.map(group => {
+                const groupHeader = `
+                    <div class="bg-slate-100/80 backdrop-blur px-6 py-2 border-y border-gray-200 sticky top-[64px] z-10 flex items-center justify-between">
+                        <span class="text-[11px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[16px]">folder_open</span>
+                            /${group === 'root' ? '' : group}
+                        </span>
+                        <span class="text-[10px] text-gray-400 font-bold font-mono">${grouped[group].length} PATHS</span>
+                    </div>`;
+
+                const rows = grouped[group].map((map) => {
+                    // We need a unique stable ID for accordions. Using index in allMappings is safe.
+                    const stableIdx = allMappings.indexOf(map);
+                    return renderMappingRow(map, stableIdx);
+                }).join('');
+
+                return groupHeader + rows;
+            }).join('');
+        }
+
+        function renderMappingRow(map, i) {
+            const isOnline = map.status === 'running';
+            const curHost = window.location.hostname;
+            const port = map.port;
+            const cleanPath = (map.path || '').replace(/\/\*\*$/, '').replace(/\{[^}]+\}/g, '');
+
+            // Direct URL (Module Port)
+            const directUrl = port ? `http://${curHost}:${port}${cleanPath}` : null;
+
+            // Gateway URL (Port 9000)
+            const gwPrefix = map.gatewayPrefix !== undefined ? map.gatewayPrefix : null;
+            const gatewayUrl = gwPrefix !== null ? `http://${curHost}:9000${gwPrefix}${cleanPath}` : null;
+
+            const method = map.method || 'GET';
+            const methodKey = (method.replace('/', '').includes('POST') && method.includes('GET')) ? 'GETPOST' : method.toUpperCase();
+            const methodBadge = `<span class="badge-${methodKey} text-[10px] font-bold mono px-2 py-0.5 rounded">${method}</span>`;
+
+            const hasApi = (map.params && map.params.length) || (map.requestBody && map.requestBody.length) || (map.response && map.response.length);
+
+            /* ─ param table helper ─ */
+            function paramRows(list, showRequired) {
+                if (!list) return '';
+                return list.map(p => `
+                    <tr>
+                        <td class="mono text-indigo-700 font-semibold">
+                            ${showRequired && p.required ? '<span class="required-dot" title="필수"></span>' : ''}${escHtml(p.name)}
+                        </td>
+                        <td class="mono text-orange-600">${escHtml(p.type)}</td>
+                        ${showRequired ? `<td><span class="text-[10px] font-bold ${p.required ? 'text-red-500' : 'text-gray-400'}">${p.required ? '필수' : '선택'}</span></td>` : ''}
+                        <td class="text-gray-500">${escHtml(p.description || '')}</td>
+                    </tr>`).join('');
+            }
+
+            const paramsSection = map.params && map.params.length ? `
+                <div class="mb-4">
+                    <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[14px]">tune</span> Query Parameters
+                    </div>
+                    <table class="param-table w-full rounded overflow-hidden border border-gray-100">
+                        <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+                        <tbody>${paramRows(map.params, true)}</tbody>
+                    </table>
+                </div>` : '';
+
+            const bodySection = map.requestBody && map.requestBody.length ? `
+                <div class="mb-4">
+                    <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[14px]">send</span> Request Body (JSON)
+                    </div>
+                    <table class="param-table w-full rounded overflow-hidden border border-gray-100">
+                        <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+                        <tbody>${paramRows(map.requestBody, true)}</tbody>
+                    </table>
+                </div>` : '';
+
+            const responseSection = map.response && map.response.length ? `
+                <div>
+                    <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[14px]">data_object</span> Response Schema
+                    </div>
+                    <table class="param-table w-full rounded overflow-hidden border border-gray-100">
+                        <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+                        <tbody>${paramRows(map.response, false)}</tbody>
+                    </table>
+                </div>` : '';
+
+            /* ─ call example ─ */
+            let exampleHtml = '';
+            if (directUrl) {
+                let curlExample = `curl -X ${method.split('/')[0]} "${directUrl}"`;
+                if (map.requestBody && map.requestBody.length) {
+                    const bodyEx = Object.fromEntries(map.requestBody.map(p => [p.name, p.type === 'String' ? 'value' : 0]));
+                    curlExample += `\\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(bodyEx, null, 2)}'`;
+                }
+                exampleHtml = `
+                    <div class="mb-4">
+                        <div class="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[14px]">terminal</span> 호출 예시 (cURL)
+                        </div>
+                        <pre class="bg-[#1a1d27] text-emerald-300 mono text-[11px] p-3 rounded-lg overflow-x-auto whitespace-pre-wrap">${escHtml(curlExample)}</pre>
+                    </div>`;
+            }
+
+            const uiElementsSection = map.uiElements && map.uiElements.length ? `
+                <div class="mb-4">
+                    <div class="text-[11px] font-bold text-blue-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[14px]">view_quilt</span> Page UI Elements & Functionality
+                    </div>
+                    <table class="param-table w-full rounded overflow-hidden border border-gray-100 bg-blue-50/20">
+                        <thead><tr><th>Element</th><th>Logic/Function</th><th>Details</th></tr></thead>
+                        <tbody>
+                            ${map.uiElements.map(e => `
+                                <tr>
+                                    <td class="font-bold text-gray-700">${escHtml(e.element)}</td>
+                                    <td class="mono text-blue-600 font-semibold">${escHtml(e.function)}</td>
+                                    <td>
+                                        <div class="text-gray-600">${escHtml(e.details)}</div>
+                                        ${e.inputs ? `<div class="mt-1 flex gap-1">${e.inputs.map(i => `<span class="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-[3px] text-[10px] mono">IN: ${escHtml(i)}</span>`).join('')}</div>` : ''}
+                                        ${e.calls ? `<div class="mt-1 flex gap-1 flex-wrap">${e.calls.map(c => `<span class="px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded-[3px] text-[10px] mono">CALL: ${escHtml(c)}</span>`).join('')}</div>` : ''}
+                                        ${e.url ? `<div class="mt-1 text-[10px] font-bold text-blue-500">URL: ${escHtml(e.url)}</div>` : ''}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>` : '';
+
+            const accordionBody = hasApi || (map.uiElements && map.uiElements.length) ? `
+                <div class="accordion-body" id="acc-${i}">
+                    <div class="px-6 py-4 bg-slate-50 border-t border-gray-100 space-y-1">
+                        ${uiElementsSection}${exampleHtml}${paramsSection}${bodySection}${responseSection}
+                    </div>
+                </div>` : '';
+
+            const hasAccordion = hasApi || (map.uiElements && map.uiElements.length);
+            const chevron = hasAccordion ? `<span class="material-symbols-outlined text-[18px] text-gray-400 chevron ml-2">expand_more</span>` : '';
+
+            return `
+            <div class="mapping-row border-b border-gray-50 last:border-0" data-path="${escHtml(map.path)}" data-module="${escHtml(map.module)}" data-desc="${escHtml(map.description)}">
+                <div class="accordion-toggle flex items-center gap-3 px-6 py-4 hover:bg-white cursor-pointer transition-colors ${hasAccordion ? '' : 'cursor-default'}"
+                     onclick="${hasAccordion ? `toggleAcc(${i}, this)` : ''}">
+                    <span class="w-2 h-2 rounded-full flex-shrink-0 ${isOnline ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-gray-300'}"></span>
+                    ${methodBadge}
+                    <div class="flex-1 min-w-0">
+                        ${gatewayUrl
+                    ? `<a href="${gatewayUrl}" target="_blank" onclick="event.stopPropagation()"
+                                  class="mono text-sm font-bold text-indigo-600 hover:underline" title="Gateway: ${gatewayUrl}">${escHtml(map.path)}</a>
+                               <span class="text-[10px] bg-indigo-50 text-indigo-500 px-1 border border-indigo-100 rounded ml-1 font-bold">GW</span>`
+                    : `<span class="mono text-sm font-bold text-gray-500">${escHtml(map.path)}</span>`}
+                        <span class="ml-3 text-xs text-gray-400">${escHtml(map.description)}</span>
+                    </div>
+                    <div class="text-right flex-shrink-0 text-xs">
+                        <span class="font-bold text-gray-700">${escHtml(map.module)}</span>
+                        ${port ? `<span class="text-gray-400 mono ml-1">:${port}</span>` : ''}
+                    </div>
+                    <span class="text-[10px] font-bold w-14 text-right flex-shrink-0 ${isOnline ? 'text-emerald-600' : 'text-gray-400'}">
+                        ${isOnline ? 'ACTIVE' : 'OFFLINE'}
+                    </span>
+                    <div class="flex gap-1 ml-4">
+                        ${gatewayUrl ? `
+                            <a href="${gatewayUrl}" target="_blank" onclick="event.stopPropagation()"
+                               class="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold border bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 transition-colors">
+                               <span class="material-symbols-outlined text-[13px]">hub</span>GW 열기
+                            </a>` : ''}
+                        ${directUrl ? `
+                            <a href="${directUrl}" target="_blank" onclick="event.stopPropagation()"
+                               class="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                               <span class="material-symbols-outlined text-[13px]">open_in_new</span>직접 열기
+                            </a>` : ''}
+                    </div>
+                    ${chevron}
+                </div>
+                ${accordionBody}
+            </div>`;
+        }
+
+        function toggleAcc(i, headerEl) {
+            const body = document.getElementById('acc-' + i);
+            if (!body) return;
+            const isOpen = body.classList.contains('open');
+            body.classList.toggle('open', !isOpen);
+            headerEl.classList.toggle('open', !isOpen);
+        }
+
+        /* ── Module controls ── */
+        async function startMod(id) {
+            const r = await fetch('/admin/msa/api/modules/' + id + '/start', { method: 'POST' });
+            const body = await r.json();
+            if (body.status !== 'ok') alert(body.message || '시작 실패');
+            refreshModules();
+        }
+
+        async function stopMod(id) {
+            if (confirm('모듈을 중지하시겠습니까?')) {
+                const r = await fetch('/admin/msa/api/modules/' + id + '/stop', { method: 'POST' });
+                const body = await r.json();
+                if (body.status !== 'ok') alert(body.message || '중지 실패');
+                refreshModules();
+            }
+        }
+
+        async function restartMod(id) {
+            if (!confirm('모듈을 재시작하시겠습니까?')) return;
+            const r = await fetch('/admin/msa/api/modules/' + id + '/restart', { method: 'POST' });
+            const body = await r.json();
+            if (body.status !== 'ok') alert(body.message || '재시작 실패');
+            setTimeout(() => refreshModules(), 1200);
+        }
+
+        async function deployRestartMod(id) {
+            if (!confirm('현재 target JAR를 /app에 배포 후 재시작할까요?')) return;
+            const r = await fetch('/admin/msa/api/modules/' + id + '/deploy-restart', { method: 'POST' });
+            const body = await r.json();
+            if (body.status !== 'ok') {
+                alert(body.message || '배포+재시작 실패');
+            }
+            setTimeout(() => refreshModules(), 1600);
+        }
+
+        async function buildDeployRestartMod(id) {
+            if (!runtimeConfig.buildAllowed) {
+                showToast('warning', '운영 보호 모드에서는 빌드 기반 배포가 차단됩니다.');
+                return;
+            }
+            if (!confirm('모듈 폴더에서 Maven 빌드 후 /app 배포 + 재시작할까요?')) return;
+            const r = await fetch('/admin/msa/api/modules/' + id + '/build-deploy-restart', { method: 'POST' });
+            const body = await r.json();
+            if (body.status !== 'ok') {
+                alert(body.message || '빌드+배포+재시작 실패');
+            }
+            setTimeout(() => refreshModules(), 2200);
+        }
+
+        async function deployZeroDowntimeMod(id) {
+            if (!confirm('현재 target JAR로 빌드 없이 무중단 배포를 실행할까요?\n임시포트 기동→헬스체크→기존 포트 전환→임시포트 종료 순서로 동작합니다.')) return;
+            const r = await fetch('/admin/msa/api/modules/' + id + '/deploy-zerodowntime', { method: 'POST' });
+            const body = await r.json();
+            if (body.status !== 'ok') {
+                alert(body.message || '배포+무중단 실패');
+            } else {
+                showToast('success', '배포+무중단 완료');
+            }
+            setTimeout(() => refreshModules(), 2600);
+        }
+
+        async function buildDeployZeroDowntimeMod(id) {
+            if (!runtimeConfig.buildAllowed) {
+                showToast('warning', '운영 보호 모드에서는 빌드 기반 배포가 차단됩니다.');
+                return;
+            }
+            if (!confirm('Maven 빌드 후 무중단 배포를 실행할까요?\n임시포트 기동→헬스체크→기존 포트 전환→임시포트 종료 순서로 동작합니다.')) return;
+            const r = await fetch('/admin/msa/api/modules/' + id + '/build-deploy-zerodowntime', { method: 'POST' });
+            const body = await r.json();
+            if (body.status !== 'ok') {
+                alert(body.message || '빌드+무중단 실패');
+            } else {
+                showToast('success', '빌드+무중단 완료');
+            }
+            setTimeout(() => refreshModules(), 2600);
+        }
+
+        /* ── Logs ── */
+        async function showLogs(id) {
+            currentLogId = id;
+            const sec = document.getElementById('logSection');
+            sec.classList.remove('hidden');
+            setTimeout(() => { sec.classList.remove('scale-95', 'opacity-0'); sec.classList.add('scale-100', 'opacity-100'); }, 10);
+            document.getElementById('logTitle').innerText = id + ' 모듈 실시간 로그';
+            if (logInterval) clearInterval(logInterval);
+            fetchLog();
+            logInterval = setInterval(fetchLog, 1500);
+            sec.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        async function fetchLog() {
+            if (!currentLogId) return;
+            const res = await fetch('/admin/msa/api/modules/' + currentLogId + '/logs');
+            const data = await res.json();
+            const box = document.getElementById('logBox');
+            const atBottom = box.scrollHeight - box.scrollTop <= box.clientHeight + 20;
+            box.innerHTML = data.logs.map(l => {
+                let cls = 'text-gray-300';
+                if (l.includes('ERROR') || l.includes('Exception')) cls = 'text-red-400';
+                else if (l.includes('WARN')) cls = 'text-yellow-400';
+                else if (l.includes('INFO')) cls = 'text-emerald-400';
+                return `<div class="${cls}">${escHtml(l)}</div>`;
+            }).join('');
+            if (atBottom) box.scrollTop = box.scrollHeight;
+        }
+
+        function closeLogs() {
+            const sec = document.getElementById('logSection');
+            sec.classList.remove('scale-100', 'opacity-100');
+            sec.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => sec.classList.add('hidden'), 300);
+            if (logInterval) clearInterval(logInterval);
+            currentLogId = null;
+        }
+
+        function escHtml(s) {
+            if (!s) return '';
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        /* ── Changes / Auto deploy ── */
+        async function refreshRuntimeConfig() {
+            try {
+                const r = await fetch('/admin/msa/api/runtime/config');
+                const data = await r.json();
+                if (data.status !== 'ok') return;
+                runtimeConfig.serverMode = data.serverMode || 'development';
+                runtimeConfig.dangerousOpsBlocked = !!data.dangerousOpsBlocked;
+                runtimeConfig.buildAllowed = !!data.buildAllowed;
+                updateRuntimeUi();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function updateRuntimeUi() {
+            const mode = runtimeConfig.serverMode === 'production' ? '운영' : '개발';
+            const badge = document.getElementById('serverModeBadge');
+            if (badge) {
+                const prod = runtimeConfig.serverMode === 'production';
+                badge.textContent = mode;
+                badge.className = `px-2 py-1 rounded text-[11px] font-black ${prod ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`;
+            }
+            const modeSelect = document.getElementById('runtimeServerMode');
+            if (modeSelect) modeSelect.value = runtimeConfig.serverMode || 'development';
+            const info = document.getElementById('runtimeModeInfo');
+            if (info) {
+                info.textContent = `mode: ${runtimeConfig.serverMode}, build: ${runtimeConfig.buildAllowed ? 'allowed' : 'blocked'}`;
+            }
+            const killBtn = document.getElementById('killAllBtn');
+            if (killBtn) {
+                killBtn.disabled = !!runtimeConfig.dangerousOpsBlocked;
+                if (runtimeConfig.dangerousOpsBlocked) {
+                    killBtn.classList.add('opacity-60', 'cursor-not-allowed');
+                } else {
+                    killBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+                }
+            }
+            renderModuleTable();
+        }
+
+        async function saveRuntimeConfig() {
+            try {
+                const serverMode = document.getElementById('runtimeServerMode')?.value || 'development';
+                const r = await fetch('/admin/msa/api/runtime/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ serverMode })
+                });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'save failed');
+                runtimeConfig.serverMode = data.serverMode || 'development';
+                runtimeConfig.dangerousOpsBlocked = !!data.dangerousOpsBlocked;
+                runtimeConfig.buildAllowed = !!data.buildAllowed;
+                updateRuntimeUi();
+                await refreshAutoDeployStatus();
+                await refreshWebhookStatus();
+                showToast('success', `모드 저장 완료: ${runtimeConfig.serverMode}`);
+            } catch (e) {
+                showToast('error', '모드 저장 실패: ' + e.message);
+            }
+        }
+
+        async function refreshAutoDeployStatus() {
+            try {
+                const r = await fetch('/admin/msa/api/autodeploy/status');
+                const data = await r.json();
+                const enabled = !!data.enabled;
+                const managerEnabled = !!data.managerEnabled;
+                const t = document.getElementById('autoDeployToggle');
+                const st = document.getElementById('autoDeployStateText');
+                t.checked = enabled;
+                st.textContent = enabled ? 'ON' : 'OFF';
+                st.className = `px-2 py-0.5 rounded text-[11px] ${enabled ? 'bg-cyan-100 text-cyan-700' : 'bg-gray-100 text-gray-600'}`;
+                const mt = document.getElementById('managerAutoDeployToggle');
+                const mst = document.getElementById('managerAutoDeployStateText');
+                if (mt) mt.checked = managerEnabled;
+                if (mst) {
+                    mst.textContent = managerEnabled ? 'ON' : 'OFF';
+                    mst.className = `px-2 py-0.5 rounded text-[11px] ${managerEnabled ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`;
+                }
+                if (data.serverMode) runtimeConfig.serverMode = data.serverMode;
+                if (typeof data.dangerousOpsBlocked !== 'undefined') runtimeConfig.dangerousOpsBlocked = !!data.dangerousOpsBlocked;
+                if (typeof data.buildAllowed !== 'undefined') runtimeConfig.buildAllowed = !!data.buildAllowed;
+                updateRuntimeUi();
+            } catch (e) { console.error(e); }
+        }
+
+        async function toggleAutoDeploy(enabled) {
+            try {
+                const r = await fetch('/admin/msa/api/autodeploy/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        enabled,
+                        managerEnabled: !!document.getElementById('managerAutoDeployToggle')?.checked
+                    })
+                });
+                const body = await r.json();
+                if (body.status !== 'ok') throw new Error(body.message || 'toggle failed');
+                await refreshAutoDeployStatus();
+                await refreshChanges();
+                showToast('info', `자동 무중단 배포 ${enabled ? '활성화' : '비활성화'}`);
+            } catch (e) {
+                showToast('error', '설정 실패: ' + e.message);
+                await refreshAutoDeployStatus();
+            }
+        }
+
+        async function toggleManagerAutoDeploy(managerEnabled) {
+            try {
+                const enabled = !!document.getElementById('autoDeployToggle')?.checked;
+                const r = await fetch('/admin/msa/api/autodeploy/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled, managerEnabled })
+                });
+                const body = await r.json();
+                if (body.status !== 'ok') throw new Error(body.message || 'toggle failed');
+                await refreshAutoDeployStatus();
+                await refreshChanges();
+                showToast('info', `MsaManager 자동배포 대상 ${managerEnabled ? '포함' : '제외'}`);
+            } catch (e) {
+                showToast('error', '설정 실패: ' + e.message);
+                await refreshAutoDeployStatus();
+            }
+        }
+
+        async function refreshWebhookConfig() {
+            try {
+                const r = await fetch('/admin/msa/api/webhook/config');
+                const data = await r.json();
+                const repo = document.getElementById('webhookRepoUrl');
+                if (repo) repo.value = data.repository || '';
+                if (!data.hasToken) {
+                    webhookTokenPlain = '';
+                    saveWebhookTokenCache('');
+                } else if (!webhookTokenPlain) {
+                    webhookTokenPlain = loadWebhookTokenCache();
+                }
+                const tokenInput = document.getElementById('webhookToken');
+                if (tokenInput && webhookTokenPlain) {
+                    tokenInput.value = webhookTokenPlain;
+                }
+                const info = document.getElementById('webhookConfigInfo');
+                if (info) {
+                    info.textContent = `repo: ${data.repository || '-'}, token: ${data.hasToken ? (data.tokenMasked || 'set') : 'not-set'}`;
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function generateWebhookToken() {
+            try {
+                const r = await fetch('/admin/msa/api/webhook/token/generate', { method: 'POST' });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'generate failed');
+                webhookTokenPlain = data.token || '';
+                saveWebhookTokenCache(webhookTokenPlain);
+                const tokenInput = document.getElementById('webhookToken');
+                if (tokenInput) tokenInput.value = webhookTokenPlain;
+                showToast('success', '웹훅 토큰 생성 완료');
+                await refreshWebhookConfig();
+            } catch (e) {
+                showToast('error', '토큰 생성 실패: ' + e.message);
+            }
+        }
+
+        async function copyWebhookToken() {
+            try {
+                const tokenInput = document.getElementById('webhookToken');
+                const token = webhookTokenPlain || (tokenInput ? tokenInput.value.trim() : '');
+                if (!token) {
+                    showToast('warning', '복사할 토큰이 없습니다. 생성 또는 입력 후 다시 시도하세요.');
+                    return;
+                }
+                await navigator.clipboard.writeText(token);
+                showToast('info', '웹훅 토큰 복사 완료');
+            } catch (e) {
+                showToast('error', '토큰 복사 실패: ' + e.message);
+            }
+        }
+
+        async function saveWebhookConfig() {
+            try {
+                const repository = document.getElementById('webhookRepoUrl')?.value || '';
+                const inputToken = document.getElementById('webhookToken')?.value || '';
+                const token = (inputToken || webhookTokenPlain || '').trim();
+                const r = await fetch('/admin/msa/api/webhook/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ repository, token })
+                });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'save failed');
+                if (token) {
+                    webhookTokenPlain = token;
+                    saveWebhookTokenCache(webhookTokenPlain);
+                    const tokenEl = document.getElementById('webhookToken');
+                    if (tokenEl) tokenEl.value = token;
+                }
+                showToast('success', '웹훅 설정 저장 완료');
+                await refreshWebhookConfig();
+                await refreshWebhookStatus();
+            } catch (e) {
+                showToast('error', '웹훅 설정 저장 실패: ' + e.message);
+            }
+        }
+
+        async function checkWebhookConfig() {
+            try {
+                const r = await fetch('/admin/msa/api/webhook/check', { method: 'POST' });
+                const data = await r.json();
+                const msg = `repo=${data.repository || '-'}, token=${data.hasToken ? 'ok' : 'missing'}, webhook=${data.webhookAllowed === false ? 'blocked(prod)' : 'allowed'}`;
+                showToast('info', msg);
+                if (data.serverMode) runtimeConfig.serverMode = data.serverMode;
+                if (typeof data.buildAllowed !== 'undefined') runtimeConfig.buildAllowed = !!data.buildAllowed;
+                updateRuntimeUi();
+                await refreshWebhookStatus();
+            } catch (e) {
+                showToast('error', '웹훅 확인 실패: ' + e.message);
+            }
+        }
+
+        async function triggerWebhookTest() {
+            try {
+                if (runtimeConfig.dangerousOpsBlocked) {
+                    showToast('warning', '운영 모드에서는 웹훅 테스트가 차단됩니다.');
+                    return;
+                }
+                const r = await fetch('/admin/msa/api/webhook/git', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ref: 'refs/heads/main', source: 'manual-test' })
+                });
+                const data = await r.json();
+                if (!r.ok || (data.status !== 'accepted' && data.status !== 'queued')) {
+                    throw new Error(data.message || 'webhook trigger failed');
+                }
+                showToast('info', `웹훅 테스트 ${data.status}`);
+                setTimeout(refreshWebhookStatus, 900);
+            } catch (e) {
+                showToast('error', '웹훅 테스트 실패: ' + e.message);
+            }
+        }
+
+        async function refreshWebhookStatus() {
+            try {
+                const r = await fetch('/admin/msa/api/webhook/status');
+                const data = await r.json();
+                const state = document.getElementById('webhookRunState');
+                if (state) {
+                    const run = data.running ? 'running' : (data.queued ? 'queued' : 'idle');
+                    state.textContent = `webhook: ${run}, last=${data.lastFinished || '-'}, exit=${data.lastExitCode == null ? '-' : data.lastExitCode}`;
+                }
+                if (data.serverMode) runtimeConfig.serverMode = data.serverMode;
+                if (typeof data.buildAllowed !== 'undefined') runtimeConfig.buildAllowed = !!data.buildAllowed;
+                updateRuntimeUi();
+                if (typeof data.webhookRemoteBuildEnabled !== 'undefined') {
+                    const b = document.getElementById('remoteWebhookBuildEnabled');
+                    if (b) b.checked = !!data.webhookRemoteBuildEnabled;
+                }
+                if (typeof data.webhookRemoteDeployOnlyEnabled !== 'undefined') {
+                    const d = document.getElementById('remoteWebhookDeployOnlyEnabled');
+                    if (d) d.checked = !!data.webhookRemoteDeployOnlyEnabled;
+                }
+                if (typeof data.webhookDeployMode !== 'undefined') {
+                    const m = document.getElementById('remoteWebhookDeployMode');
+                    if (m) m.value = data.webhookDeployMode || 'jar';
+                }
+                const tailBox = document.getElementById('webhookTailBox');
+                const lines = data.tail || [];
+                if (tailBox) {
+                    tailBox.textContent = lines.length ? lines.join('\n') : '대기 중...';
+                    tailBox.scrollTop = tailBox.scrollHeight;
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function refreshOpsDeployTab() {
+            await Promise.all([refreshRemoteConfig(), refreshRemoteStatus()]);
+            fillRemoteModuleSelect();
+        }
+
+        function fillRemoteModuleSelect() {
+            const sel = document.getElementById('remoteModuleSelect');
+            if (!sel) return;
+            const rows = (modules || []).filter(m => m && m.javaRunnable && m.id !== 'EgovMsaManager');
+            const current = sel.value;
+            sel.innerHTML = rows.map(m => `<option value="${m.id}">${m.id}</option>`).join('');
+            if (current && rows.some(r => r.id === current)) sel.value = current;
+        }
+
+        async function refreshRemoteConfig() {
+            try {
+                const r = await fetch('/admin/msa/api/remote/config');
+                const data = await r.json();
+                remoteDeployConfig = data || {};
+                const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+                setVal('remoteHost', data.host);
+                setVal('remotePort', data.port || '22');
+                setVal('remoteUser', data.user);
+                setVal('remoteKeyPath', data.keyPath);
+                setVal('remoteDir', data.remoteDir || appRoot);
+                setVal('remoteContainerName', data.containerName || 'carbosys-app');
+                setVal('remoteManagerUrl', data.managerUrl || 'http://localhost:18030');
+                setVal('composeBlueFile', data.composeBlueFile || 'docker-compose.blue.yml');
+                setVal('composeGreenFile', data.composeGreenFile || 'docker-compose.green.yml');
+                setVal('bgNginxSwitchCmd', data.nginxSwitchCmd || '');
+                setVal('bgNginxReloadCmd', data.nginxReloadCmd || 'nginx -s reload');
+                setVal('bgBlueHealthUrl', data.blueGatewayHealthUrl || 'http://localhost:9000/actuator/health');
+                setVal('bgGreenHealthUrl', data.greenGatewayHealthUrl || 'http://localhost:9001/actuator/health');
+                setVal('bgBaseServices', data.baseServices || 'eureka-server config-server gateway-server');
+                setVal('bgHomeService', data.homeService || 'egov-home');
+                setVal('bgManagerService', data.managerService || 'egov-msa-manager');
+                const pw = document.getElementById('remotePassword');
+                if (pw) pw.value = '';
+                const wb = document.getElementById('remoteWebhookBuildEnabled');
+                if (wb) wb.checked = !!data.webhookRemoteBuildEnabled;
+                const wd = document.getElementById('remoteWebhookDeployOnlyEnabled');
+                if (wd) wd.checked = !!data.webhookRemoteDeployOnlyEnabled;
+                const wm = document.getElementById('remoteWebhookDeployMode');
+                if (wm) wm.value = data.webhookDeployMode || 'jar';
+                const ac = document.getElementById('bgActiveColor');
+                if (ac) ac.value = data.activeColor || 'blue';
+                const info = document.getElementById('remoteConfigInfo');
+                if (info) info.textContent = `remote: ${data.user || '-'}@${data.host || '-'}:${data.port || '22'}, dir=${data.remoteDir || '-'}, mode=${data.serverMode || '-'}`;
+                const badge = document.getElementById('remoteModeBadge');
+                if (badge) {
+                    const prod = data.serverMode === 'production';
+                    badge.textContent = `mode: ${data.serverMode || 'development'}`;
+                    badge.className = `px-2 py-0.5 rounded text-[11px] mono ${prod ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`;
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function saveRemoteConfig() {
+            try {
+                const payload = {
+                    host: document.getElementById('remoteHost')?.value || '',
+                    port: document.getElementById('remotePort')?.value || '22',
+                    user: document.getElementById('remoteUser')?.value || '',
+                    keyPath: document.getElementById('remoteKeyPath')?.value || '',
+                    password: document.getElementById('remotePassword')?.value || '',
+                    remoteDir: document.getElementById('remoteDir')?.value || appRoot,
+                    containerName: document.getElementById('remoteContainerName')?.value || 'carbosys-app',
+                    managerUrl: document.getElementById('remoteManagerUrl')?.value || 'http://localhost:18030',
+                    activeColor: document.getElementById('bgActiveColor')?.value || 'blue',
+                    composeBlueFile: document.getElementById('composeBlueFile')?.value || 'docker-compose.blue.yml',
+                    composeGreenFile: document.getElementById('composeGreenFile')?.value || 'docker-compose.green.yml',
+                    nginxSwitchCmd: document.getElementById('bgNginxSwitchCmd')?.value || '',
+                    nginxReloadCmd: document.getElementById('bgNginxReloadCmd')?.value || 'nginx -s reload',
+                    blueGatewayHealthUrl: document.getElementById('bgBlueHealthUrl')?.value || 'http://localhost:9000/actuator/health',
+                    greenGatewayHealthUrl: document.getElementById('bgGreenHealthUrl')?.value || 'http://localhost:9001/actuator/health',
+                    baseServices: document.getElementById('bgBaseServices')?.value || 'eureka-server config-server gateway-server',
+                    homeService: document.getElementById('bgHomeService')?.value || 'egov-home',
+                    managerService: document.getElementById('bgManagerService')?.value || 'egov-msa-manager',
+                    webhookDeployMode: document.getElementById('remoteWebhookDeployMode')?.value || 'jar',
+                    webhookRemoteBuildEnabled: !!document.getElementById('remoteWebhookBuildEnabled')?.checked,
+                    webhookRemoteDeployOnlyEnabled: !!document.getElementById('remoteWebhookDeployOnlyEnabled')?.checked
+                };
+                const r = await fetch('/admin/msa/api/remote/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'save failed');
+                showToast('success', '원격 배포 설정 저장 완료');
+                await refreshRemoteConfig();
+                await refreshWebhookStatus();
+            } catch (e) {
+                showToast('error', '원격 배포 설정 저장 실패: ' + e.message);
+            }
+        }
+
+        async function runRemoteInitialDeploy() {
+            try {
+                if (runtimeConfig.dangerousOpsBlocked) {
+                    showToast('warning', '운영 모드에서는 차단됩니다.');
+                    return;
+                }
+                if (!confirm('운영 서버 초기 배포를 실행할까요? (파일 전송 + docker compose up -d --build)')) return;
+                const r = await fetch('/admin/msa/api/remote/initial-deploy', { method: 'POST' });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'initial deploy failed');
+                showToast('success', data.message || '초기 배포 완료');
+                await refreshRemoteStatus();
+            } catch (e) {
+                showToast('error', '초기 배포 실패: ' + e.message);
+                await refreshRemoteStatus();
+            }
+        }
+
+        async function runRemoteSourceDeploy() {
+            try {
+                if (runtimeConfig.dangerousOpsBlocked) {
+                    showToast('warning', '운영 모드에서는 차단됩니다.');
+                    return;
+                }
+                if (!confirm('소스코드 배포를 실행할까요? (원격 서버에 파일 전송/압축해제)')) return;
+                await saveRemoteConfig();
+                const r = await fetch('/admin/msa/api/remote/source-deploy', { method: 'POST' });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'source deploy failed');
+                showToast('success', data.message || '소스코드 배포 완료');
+                await refreshRemoteStatus();
+            } catch (e) {
+                showToast('error', '소스코드 배포 실패: ' + e.message);
+                await refreshRemoteStatus();
+            }
+        }
+
+        async function runRemoteBuildOnly() {
+            try {
+                if (runtimeConfig.dangerousOpsBlocked) {
+                    showToast('warning', '운영 모드에서는 차단됩니다.');
+                    return;
+                }
+                if (!confirm(`빌드를 실행할까요? (로컬 ${appRoot} 기준 mvn -DskipTests package)`)) return;
+                const r = await fetch('/admin/msa/api/remote/build', { method: 'POST' });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'build failed');
+                showToast('success', data.message || '빌드 완료');
+                await refreshRemoteStatus();
+            } catch (e) {
+                showToast('error', '빌드 실패: ' + e.message);
+                await refreshRemoteStatus();
+            }
+        }
+
+        async function runRemoteDockerColorUp(color) {
+            try {
+                if (runtimeConfig.dangerousOpsBlocked) {
+                    showToast('warning', '운영 모드에서는 차단됩니다.');
+                    return;
+                }
+                const includeManager = !!document.getElementById('bgIncludeManager')?.checked;
+                const homeOnly = !!document.getElementById('bgHomeOnly')?.checked;
+                if (!confirm(`도커 ${color} 기동을 실행할까요?\n옵션: homeOnly=${homeOnly}, includeManager=${includeManager}`)) return;
+                await saveRemoteConfig();
+                const r = await fetch('/admin/msa/api/remote/docker/color-up', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ color, includeManager, homeOnly, build: true })
+                });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'docker color up failed');
+                showToast('success', data.message || `도커 ${color} 기동 완료`);
+                await refreshRemoteConfig();
+                await refreshRemoteStatus();
+            } catch (e) {
+                showToast('error', `도커 ${color} 기동 실패: ` + e.message);
+                await refreshRemoteStatus();
+            }
+        }
+
+        async function runRemoteNginxAction(action) {
+            try {
+                if (runtimeConfig.dangerousOpsBlocked) {
+                    showToast('warning', '운영 모드에서는 차단됩니다.');
+                    return;
+                }
+                const msg = action === 'reload'
+                    ? 'nginx reload 명령을 실행할까요?'
+                    : `nginx를 ${action}로 전환하고 reload 할까요?`;
+                if (!confirm(msg)) return;
+                await saveRemoteConfig();
+                const r = await fetch('/admin/msa/api/remote/nginx', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action })
+                });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'nginx command failed');
+                showToast('success', data.message || 'nginx 명령 완료');
+                await refreshRemoteConfig();
+                await refreshRemoteStatus();
+            } catch (e) {
+                showToast('error', 'nginx 명령 실패: ' + e.message);
+                await refreshRemoteStatus();
+            }
+        }
+
+        async function runBlueGreenDeploy() {
+            try {
+                if (runtimeConfig.dangerousOpsBlocked) {
+                    showToast('warning', '운영 모드에서는 차단됩니다.');
+                    return;
+                }
+                const includeManager = !!document.getElementById('bgIncludeManager')?.checked;
+                const homeOnly = !!document.getElementById('bgHomeOnly')?.checked;
+                if (!confirm(`Blue/Green 전환을 실행할까요?\n최종 상태: blue(9000) 유지, green(9001) 자동 종료\n옵션: homeOnly=${homeOnly}, includeManager=${includeManager}`)) return;
+                await saveRemoteConfig();
+                const r = await fetch('/admin/msa/api/remote/bluegreen/deploy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ includeManager, homeOnly })
+                });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'blue/green deploy failed');
+                showToast('success', data.message || 'Blue/Green 전환 완료');
+                await refreshRemoteConfig();
+                await refreshRemoteStatus();
+            } catch (e) {
+                showToast('error', 'Blue/Green 전환 실패: ' + e.message);
+                await refreshRemoteStatus();
+            }
+        }
+
+        async function runRemoteAutoDeployAll(build) {
+            try {
+                if (runtimeConfig.dangerousOpsBlocked) {
+                    showToast('warning', '운영 모드에서는 차단됩니다.');
+                    return;
+                }
+                const label = build ? '자동배포(빌드 포함)' : '자동배포(빌드 제외)';
+                if (!confirm(`${label}를 실행할까요?\nDockerfile 기반 전체 배포가 수행됩니다.`)) return;
+                const r = await fetch('/admin/msa/api/remote/auto-deploy-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ build })
+                });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'auto deploy failed');
+                showToast('success', data.message || '원격 자동배포 완료');
+                await refreshRemoteStatus();
+            } catch (e) {
+                showToast('error', '원격 자동배포 실패: ' + e.message);
+                await refreshRemoteStatus();
+            }
+        }
+
+        async function runRemoteDeploySelected(build) {
+            try {
+                if (runtimeConfig.dangerousOpsBlocked) {
+                    showToast('warning', '운영 모드에서는 차단됩니다.');
+                    return;
+                }
+                const moduleId = document.getElementById('remoteModuleSelect')?.value || '';
+                if (!moduleId) {
+                    showToast('warning', '모듈을 선택하세요.');
+                    return;
+                }
+                const label = build ? '빌드+JAR+무중단' : 'JAR+무중단';
+                if (!confirm(`${moduleId} ${label} 배포를 실행할까요?`)) return;
+                const r = await fetch('/admin/msa/api/remote/deploy-module', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ moduleId, build })
+                });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'remote deploy failed');
+                showToast('success', data.message || '원격 배포 완료');
+                await refreshRemoteStatus();
+            } catch (e) {
+                showToast('error', '원격 배포 실패: ' + e.message);
+                await refreshRemoteStatus();
+            }
+        }
+
+        async function refreshRemoteStatus() {
+            try {
+                const r = await fetch('/admin/msa/api/remote/status');
+                const data = await r.json();
+                const tail = document.getElementById('remoteDeployTailBox');
+                const lines = data.tail || [];
+                if (tail) {
+                    tail.textContent = lines.length ? lines.join('\n') : '대기 중...';
+                    tail.scrollTop = tail.scrollHeight;
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function refreshChanges() {
+            try {
+                const r = await fetch('/admin/msa/api/changes' + getLogRangeQuery());
+                changeHistory = await r.json();
+                renderChangeTable();
+            } catch (e) { console.error(e); }
+        }
+
+        function renderChangeTable() {
+            const tbody = document.getElementById('changeTable');
+            if (!changeHistory.length) {
+                tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-sm text-gray-400">기록 없음</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = changeHistory.map((h, i) => {
+                const key = changeKey(h);
+                const stCls = h.status === 'ok' ? 'bg-emerald-100 text-emerald-700'
+                    : h.status === 'error' ? 'bg-red-100 text-red-700'
+                        : h.status === 'running' ? 'bg-blue-100 text-blue-700'
+                            : 'bg-gray-100 text-gray-600';
+                const details = renderChangeDetails(h.details || []);
+                const opened = expandedChangeKeys.has(key) ? '' : 'hidden';
+                return `
+                <tr class="hover:bg-blue-50/30">
+                    <td class="px-4 py-3 text-xs mono text-gray-500">${escHtml(h.time || '')}</td>
+                    <td class="px-4 py-3 text-sm font-bold text-[var(--kr-gov-blue)] mono">${escHtml(h.module || '')}</td>
+                    <td class="px-4 py-3 text-xs mono">${escHtml(h.type || '')}</td>
+                    <td class="px-4 py-3 text-xs text-gray-700">${escHtml(h.message || '')}</td>
+                    <td class="px-4 py-3 text-center"><span class="status-badge ${stCls}">${escHtml(h.status || '-')}</span></td>
+                    <td class="px-4 py-3 text-right">
+                        <button onclick="toggleChangeDetail('${escHtml(key)}')" class="px-2 py-1 rounded text-[11px] font-bold border border-gray-200 text-gray-600 hover:bg-gray-50">상세</button>
+                    </td>
+                </tr>
+                <tr id="chg-${escHtml(key)}" class="${opened} bg-slate-50">
+                    <td colspan="6" class="px-4 py-3 text-xs mono text-gray-600 whitespace-pre-wrap">${details || '-'}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function changeKey(h) {
+            const raw = `${h.time || ''}|${h.module || ''}|${h.type || ''}|${h.message || ''}`;
+            return encodeURIComponent(raw);
+        }
+
+        function renderChangeDetails(details) {
+            return details.map((line) => {
+                const s = String(line || '');
+                let cls = 'text-gray-700';
+                if (s.startsWith('+ ')) cls = 'text-lime-700 bg-lime-100/70';
+                else if (s.startsWith('- ')) cls = 'text-pink-700 bg-pink-100/70';
+                else if (s.startsWith('[MOD]') || s.startsWith('[ADD]') || s.startsWith('[DELETE]')) cls = 'text-indigo-700 bg-indigo-50';
+                else if (s.startsWith('@@')) cls = 'text-cyan-700 bg-cyan-50';
+                return `<div class="px-1 py-0.5 rounded ${cls}">${escHtml(s)}</div>`;
+            }).join('');
+        }
+
+        function toggleChangeDetail(key) {
+            const el = document.getElementById('chg-' + key);
+            if (!el) return;
+            el.classList.toggle('hidden');
+            if (el.classList.contains('hidden')) expandedChangeKeys.delete(key);
+            else expandedChangeKeys.add(key);
+        }
+
+        /* ── Logs Tab ── */
+        async function refreshLogTab() {
+            await Promise.all([refreshModuleLogs(), refreshCriticalLogs()]);
+            renderModuleLogs();
+            renderCriticalBanner();
+        }
+
+        async function refreshModuleLogs() {
+            try {
+                const r = await fetch('/admin/msa/api/logs/modules');
+                const data = await r.json();
+                moduleLogs = data.modules || [];
+            } catch (e) { console.error(e); }
+        }
+
+        async function refreshCriticalLogs() {
+            try {
+                const r = await fetch('/admin/msa/api/logs/critical');
+                criticalLogs = await r.json();
+            } catch (e) { console.error(e); }
+        }
+
+        async function resetLiveLogs() {
+            if (!confirm('실시간 로그 모니터링을 초기화합니다.\n현재 이벤트 파일을 분리 보관하고, 이후 시점 로그부터 다시 수집합니다.\n계속하시겠습니까?')) {
+                return;
+            }
+            try {
+                const res = await fetch('/admin/msa/api/logs/reset', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok || data.status !== 'ok') {
+                    throw new Error(data.message || '실시간 로그 초기화 실패');
+                }
+                showToast('success', data.message || '실시간 로그를 초기화했습니다.');
+                await refreshLogTab();
+            } catch (e) {
+                showToast('error', e.message || '실시간 로그 초기화 실패');
+            }
+        }
+
+        function renderCriticalBanner() {
+            const banner = document.getElementById('criticalBanner');
+            const cnt = document.getElementById('criticalCount');
+            const head = document.getElementById('criticalHead');
+            if (!criticalLogs || criticalLogs.length === 0) {
+                banner.classList.add('hidden');
+                return;
+            }
+            const top = criticalLogs[0];
+            cnt.textContent = `최근 중대오류 ${criticalLogs.length}건`;
+            head.textContent = `[${top.time || ''}] ${top.module || ''} | ${top.message || ''}`;
+            banner.classList.remove('hidden');
+        }
+
+        function renderModuleLogs() {
+            const grid = document.getElementById('moduleLogGrid');
+            if (!moduleLogs || moduleLogs.length === 0) {
+                grid.innerHTML = `<div class="gov-card p-8 text-center text-gray-400 text-sm">로그 데이터 없음</div>`;
+                return;
+            }
+            grid.innerHTML = moduleLogs.map((m, idx) => {
+                const logs = m.logs || [];
+                const lines = logs.slice(-80).map(l => {
+                    const msg = l.message || '';
+                    let cls = 'text-gray-300';
+                    if (msg.includes('FATAL') || msg.includes('ERROR') || msg.includes('Exception')) cls = 'text-pink-300';
+                    else if (msg.includes('WARN')) cls = 'text-amber-300';
+                    else if (msg.includes('INFO')) cls = 'text-lime-300';
+                    return `<div class="${cls}">[${escHtml(l.time || '')}] ${escHtml(msg)}</div>`;
+                }).join('');
+                return `
+                <div class="gov-card overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                        <div class="font-bold mono text-[var(--kr-gov-blue)]">${escHtml(m.module || '')}</div>
+                        <div class="text-xs text-gray-400 mono">${m.count || 0} lines</div>
+                    </div>
+                    <div id="mlog-${idx}" class="log-box h-[260px] rounded-none">${lines || '<div class="text-gray-500">no logs</div>'}</div>
+                </div>`;
+            }).join('');
+        }
+
+        /* ── Log History Tab ── */
+        async function refreshLogHistoryTab() {
+            await Promise.all([
+                refreshHistoryModuleLogs(),
+                refreshHistoryCriticalLogs(),
+                refreshHistoryControllerStats(),
+                refreshHistoryErrorStats()
+            ]);
+            renderHistoryCriticalBanner();
+            renderHistoryControllerStats();
+            renderHistoryErrorStats();
+            renderHistoryModuleLogs();
+        }
+
+        async function refreshHistoryModuleLogs() {
+            try {
+                const r = await fetch('/admin/msa/api/logs/archive/modules' + getLogRangeQuery());
+                const data = await r.json();
+                historyModuleLogs = data.modules || [];
+            } catch (e) { console.error(e); }
+        }
+
+        async function refreshHistoryCriticalLogs() {
+            try {
+                const r = await fetch('/admin/msa/api/logs/archive/critical' + getLogRangeQuery());
+                historyCriticalLogs = await r.json();
+            } catch (e) { console.error(e); }
+        }
+
+        async function refreshHistoryControllerStats() {
+            try {
+                const r = await fetch('/admin/msa/api/stats/archive/controllers' + getLogRangeQuery());
+                historyControllerStats = await r.json();
+            } catch (e) { console.error(e); }
+        }
+
+        async function refreshHistoryErrorStats() {
+            try {
+                const r = await fetch('/admin/msa/api/stats/archive/errors' + getLogRangeQuery());
+                historyErrorStats = await r.json();
+            } catch (e) { console.error(e); }
+        }
+
+        function renderHistoryCriticalBanner() {
+            const banner = document.getElementById('historyCriticalBanner');
+            const cnt = document.getElementById('historyCriticalCount');
+            const head = document.getElementById('historyCriticalHead');
+            if (!historyCriticalLogs || historyCriticalLogs.length === 0) {
+                banner.classList.add('hidden');
+                return;
+            }
+            const top = historyCriticalLogs[0];
+            cnt.textContent = `기간 중대오류 ${historyCriticalLogs.length}건`;
+            head.textContent = `[${top.time || ''}] ${top.module || ''} | ${top.message || ''}`;
+            banner.classList.remove('hidden');
+        }
+
+        function renderHistoryControllerStats() {
+            const tbody = document.getElementById('historyControllerStatTable');
+            if (!historyControllerStats || historyControllerStats.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="2" class="px-4 py-8 text-center text-sm text-gray-400">데이터 없음</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = historyControllerStats.map(r => `
+                <tr class="hover:bg-cyan-50/30">
+                    <td class="px-4 py-3 text-xs mono text-cyan-800">${escHtml(r.controller || '')}</td>
+                    <td class="px-4 py-3 text-right text-sm font-black text-cyan-700 mono">${r.count || 0}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderHistoryErrorStats() {
+            const tbody = document.getElementById('historyErrorStatTable');
+            if (!historyErrorStats || historyErrorStats.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="2" class="px-4 py-8 text-center text-sm text-gray-400">데이터 없음</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = historyErrorStats.map(r => `
+                <tr class="hover:bg-rose-50/30">
+                    <td class="px-4 py-3 text-xs mono text-rose-800">${escHtml(r.source || '')}</td>
+                    <td class="px-4 py-3 text-right text-sm font-black text-rose-700 mono">${r.count || 0}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderHistoryModuleLogs() {
+            const grid = document.getElementById('historyModuleLogGrid');
+            if (!historyModuleLogs || historyModuleLogs.length === 0) {
+                grid.innerHTML = `<div class="gov-card p-8 text-center text-gray-400 text-sm">기간 내 아카이브 로그 없음</div>`;
+                return;
+            }
+            grid.innerHTML = historyModuleLogs.map((m, idx) => {
+                const logs = m.logs || [];
+                const lines = logs.slice(-80).map(l => {
+                    const msg = l.message || '';
+                    let cls = 'text-gray-300';
+                    if (msg.includes('FATAL') || msg.includes('ERROR') || msg.includes('Exception')) cls = 'text-pink-300';
+                    else if (msg.includes('WARN')) cls = 'text-amber-300';
+                    else if (msg.includes('INFO')) cls = 'text-lime-300';
+                    return `<div class="${cls}">[${escHtml(l.time || '')}] ${escHtml(msg)}</div>`;
+                }).join('');
+                return `
+                <div class="gov-card overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                        <div class="font-bold mono text-[var(--kr-gov-blue)]">${escHtml(m.module || '')}</div>
+                        <div class="text-xs text-gray-400 mono">${m.count || 0} lines</div>
+                    </div>
+                    <div id="hlog-${idx}" class="log-box h-[260px] rounded-none">${lines || '<div class="text-gray-500">no logs</div>'}</div>
+                </div>`;
+            }).join('');
+        }
+
+        /* ── Analytics Tab ── */
+        async function refreshAnalyticsTab() {
+            await Promise.all([refreshControllerStats(), refreshErrorStats()]);
+            renderControllerStats();
+            renderErrorStats();
+        }
+
+        async function refreshControllerStats() {
+            try {
+                const r = await fetch('/admin/msa/api/stats/controllers' + getLogRangeQuery());
+                controllerStats = await r.json();
+            } catch (e) { console.error(e); }
+        }
+
+        async function refreshErrorStats() {
+            try {
+                const r = await fetch('/admin/msa/api/stats/errors' + getLogRangeQuery());
+                errorStats = await r.json();
+            } catch (e) { console.error(e); }
+        }
+
+        function renderControllerStats() {
+            const tbody = document.getElementById('controllerStatTable');
+            if (!controllerStats || controllerStats.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="2" class="px-4 py-8 text-center text-sm text-gray-400">데이터 없음</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = controllerStats.map(r => `
+                <tr class="hover:bg-cyan-50/30">
+                    <td class="px-4 py-3 text-xs mono text-cyan-800">${escHtml(r.controller || '')}</td>
+                    <td class="px-4 py-3 text-right text-sm font-black text-cyan-700 mono">${r.count || 0}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderErrorStats() {
+            const tbody = document.getElementById('errorStatTable');
+            if (!errorStats || errorStats.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="2" class="px-4 py-8 text-center text-sm text-gray-400">데이터 없음</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = errorStats.map(r => `
+                <tr class="hover:bg-rose-50/30">
+                    <td class="px-4 py-3 text-xs mono text-rose-800">${escHtml(r.source || '')}</td>
+                    <td class="px-4 py-3 text-right text-sm font-black text-rose-700 mono">${r.count || 0}</td>
+                </tr>
+            `).join('');
+        }
+
+        /* ── Additional Program Tabs ── */
+        async function refreshSecurityTab() {
+            try {
+                const r = await fetch('/admin/msa/api/security/violations');
+                const data = await r.json();
+                securityViolations = data.items || [];
+                const gc = data.gradeCounts || {};
+                document.getElementById('secCountCritical').textContent = gc.critical || 0;
+                document.getElementById('secCountHigh').textContent = gc.high || 0;
+                document.getElementById('secCountMedium').textContent = gc.medium || 0;
+                document.getElementById('secCountLow').textContent = gc.low || 0;
+                document.getElementById('secCountActionRequired').textContent = data.actionRequired || 0;
+                renderSecurityTable();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function renderSecurityTable() {
+            const tbody = document.getElementById('securityTable');
+            if (!securityViolations || securityViolations.length === 0) {
+                renderSecurityActionQueue([]);
+                tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-sm text-gray-400">감지 항목 없음</td></tr>`;
+                return;
+            }
+            const topActionItems = securityViolations
+                .filter(v => v.actionRequired === true || String(v.action || '').toLowerCase() === 'immediate')
+                .slice(0, 8);
+            renderSecurityActionQueue(topActionItems);
+
+            const filtered = securityViolations.filter(v => {
+                const action = String(v.action || '').toLowerCase();
+                if (securityFilterMode === 'required') return v.actionRequired === true;
+                if (securityFilterMode === 'immediate') return action === 'immediate';
+                return true;
+            });
+            if (!filtered.length) {
+                tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-sm text-gray-400">선택한 필터에서 감지 항목 없음</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.slice(0, 200).map(v => {
+                const g = String(v.grade || '').toLowerCase();
+                const action = String(v.action || '').toLowerCase();
+                let gCls = 'bg-gray-100 text-gray-700';
+                if (g === 'critical') gCls = 'bg-red-100 text-red-700';
+                else if (g === 'high') gCls = 'bg-orange-100 text-orange-700';
+                else if (g === 'medium') gCls = 'bg-amber-100 text-amber-700';
+                let aCls = 'bg-gray-100 text-gray-700';
+                if (action === 'immediate') aCls = 'bg-rose-100 text-rose-700';
+                else if (action === 'required') aCls = 'bg-indigo-100 text-indigo-700';
+                else if (action === 'review') aCls = 'bg-cyan-100 text-cyan-700';
+                return `
+                <tr class="hover:bg-red-50/20">
+                    <td class="px-4 py-3 text-xs mono text-gray-500">${escHtml(v.time || '')}</td>
+                    <td class="px-4 py-3 text-xs mono font-bold text-[var(--kr-gov-blue)]">${escHtml(v.module || '')}</td>
+                    <td class="px-4 py-3 text-xs"><span class="status-badge ${aCls}">${escHtml(v.action || 'observe')}</span><div class="text-[10px] text-gray-400 mono mt-0.5">${escHtml(String(v.priorityScore ?? ''))}</div></td>
+                    <td class="px-4 py-3 text-xs"><span class="status-badge ${gCls}">${escHtml(v.grade || 'low')}</span></td>
+                    <td class="px-4 py-3 text-xs text-gray-700">${escHtml(v.category || '')}</td>
+                    <td class="px-4 py-3 text-xs text-gray-700">${escHtml(v.message || '')}<div class="text-[10px] text-gray-400 mt-1">${escHtml(v.remediation || '')}</div></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function renderSecurityActionQueue(items) {
+            const box = document.getElementById('securityActionQueue');
+            const cnt = document.getElementById('secActionQueueCount');
+            if (cnt) cnt.textContent = String((items || []).length);
+            if (!box) return;
+            if (!items || !items.length) {
+                box.innerHTML = `<div class="text-xs text-rose-700/80">즉시 조치가 필요한 항목이 없습니다.</div>`;
+                return;
+            }
+            box.innerHTML = items.map(v => `
+                <div class="rounded border border-rose-200 bg-white px-3 py-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="text-xs font-bold text-rose-700">${escHtml(v.module || '-')} · ${escHtml(v.rule || '-')}</div>
+                        <div class="text-[11px] text-rose-600 mono">priority ${escHtml(String(v.priorityScore ?? ''))}</div>
+                    </div>
+                    <div class="mt-1 text-[11px] text-gray-700 mono">${escHtml((v.file || '-') + ':' + (v.line || '-'))}</div>
+                    <div class="mt-1 text-[11px] text-gray-600">${escHtml(v.remediation || '')}</div>
+                </div>
+            `).join('');
+        }
+
+        function setSecurityFilter(mode) {
+            securityFilterMode = mode;
+            const isAll = mode === 'all';
+            const isRequired = mode === 'required';
+            const isImmediate = mode === 'immediate';
+            document.getElementById('secFilterAll').className = `px-2 py-1 rounded border text-[11px] font-bold ${isAll ? 'border-gray-500 bg-gray-700 text-white' : 'border-gray-300 bg-white text-gray-700'}`;
+            document.getElementById('secFilterRequired').className = `px-2 py-1 rounded border text-[11px] font-bold ${isRequired ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-indigo-300 bg-indigo-50 text-indigo-700'}`;
+            document.getElementById('secFilterImmediate').className = `px-2 py-1 rounded border text-[11px] font-bold ${isImmediate ? 'border-rose-500 bg-rose-600 text-white' : 'border-rose-300 bg-rose-100 text-rose-700'}`;
+            renderSecurityTable();
+        }
+
+        async function refreshSecurityExplorerTab() {
+            try {
+                const [cfgRes, stRes] = await Promise.all([
+                    fetch('/admin/msa/api/security/source-scan/config'),
+                    fetch('/admin/msa/api/security/explore/status')
+                ]);
+                const cfg = await cfgRes.json();
+                const st = await stRes.json();
+                securityExploreStatus = st;
+
+                const toggle = document.getElementById('sourceScanEnabledToggle');
+                const state = document.getElementById('sourceScanStateText');
+                const profile = document.getElementById('sourceScanProfileSelect');
+                const last = document.getElementById('sourceScanLastScanAt');
+                const baselineInfo = document.getElementById('securityBaselineInfo');
+                if (toggle) toggle.checked = !!cfg.enabled;
+                if (state) {
+                    state.textContent = cfg.enabled ? 'ON' : 'OFF';
+                    state.className = `px-2 py-0.5 rounded text-[11px] ${cfg.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`;
+                }
+                if (profile) profile.value = cfg.profile || 'strict';
+                if (last) last.textContent = `마지막 스캔: ${cfg.lastScanAt || '-'}`;
+                if (baselineInfo) baselineInfo.textContent = `baseline: ${cfg.baselineCount || 0}`;
+                const optEvent = document.getElementById('optIncludeEventEngine');
+                const optExternal = document.getElementById('optIncludeExternalEngine');
+                const optNewOnly = document.getElementById('optNewOnlyMode');
+                const optGateCritical = document.getElementById('optGateCritical');
+                const optGateHigh = document.getElementById('optGateHigh');
+                if (optEvent) optEvent.checked = !!cfg.includeEventEngine;
+                if (optExternal) optExternal.checked = !!cfg.includeExternalEngine;
+                if (optNewOnly) optNewOnly.checked = !!cfg.newOnlyMode;
+                if (optGateCritical) optGateCritical.checked = !!cfg.gateCritical;
+                if (optGateHigh) optGateHigh.checked = !!cfg.gateHigh;
+
+                renderSecurityExplorerStatus(st);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function toggleSourceScanEnabled(enabled) {
+            try {
+                const res = await fetch('/admin/msa/api/security/source-scan/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+                const data = await res.json();
+                showToast('success', `소스 보안 결과 병합 ${data.enabled ? '활성화' : '비활성화'}`);
+                await refreshSecurityExplorerTab();
+                await refreshSecurityTab();
+            } catch (e) {
+                showToast('error', '설정 저장 실패: ' + e.message);
+            }
+        }
+
+        async function changeSourceScanProfile(profile) {
+            try {
+                const res = await fetch('/admin/msa/api/security/source-scan/profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profile })
+                });
+                const data = await res.json();
+                showToast('success', `탐지 프로파일: ${data.profile}`);
+                await refreshSecurityExplorerTab();
+            } catch (e) {
+                showToast('error', '프로파일 변경 실패: ' + e.message);
+            }
+        }
+
+        async function setSecurityAdvancedOptions() {
+            try {
+                const payload = {
+                    includeEventEngine: !!document.getElementById('optIncludeEventEngine')?.checked,
+                    includeExternalEngine: !!document.getElementById('optIncludeExternalEngine')?.checked,
+                    newOnlyMode: !!document.getElementById('optNewOnlyMode')?.checked,
+                    gateCritical: !!document.getElementById('optGateCritical')?.checked,
+                    gateHigh: !!document.getElementById('optGateHigh')?.checked
+                };
+                const res = await fetch('/admin/msa/api/security/source-scan/options', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                showToast('success', `옵션 저장 완료 (baseline ${data.baselineCount || 0})`);
+                await refreshSecurityExplorerTab();
+                await refreshSecurityTab();
+            } catch (e) {
+                showToast('error', '옵션 저장 실패: ' + e.message);
+            }
+        }
+
+        async function rebuildSecurityBaseline() {
+            try {
+                const res = await fetch('/admin/msa/api/security/baseline/rebuild', { method: 'POST' });
+                const data = await res.json();
+                showToast('success', `베이스라인 재생성 완료 (${data.baselineCount || 0})`);
+                await refreshSecurityExplorerTab();
+                await refreshSecurityTab();
+            } catch (e) {
+                showToast('error', '베이스라인 재생성 실패: ' + e.message);
+            }
+        }
+
+        async function runSecurityExplorer(mode) {
+            try {
+                const btnIds = ['runSourceScanBtn', 'runLogScanBtn', 'runAllScanBtn'];
+                btnIds.forEach(id => document.getElementById(id)?.setAttribute('disabled', 'disabled'));
+                const res = await fetch('/admin/msa/api/security/explore/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode })
+                });
+                const data = await res.json();
+                if (data.status === 'busy') {
+                    showToast('warning', '이미 탐색 작업이 실행 중입니다.');
+                } else {
+                    showToast('info', `탐색 시작: ${mode}`);
+                }
+                await refreshSecurityExplorerTab();
+            } catch (e) {
+                showToast('error', '탐색 실행 실패: ' + e.message);
+            } finally {
+                setTimeout(() => {
+                    ['runSourceScanBtn', 'runLogScanBtn', 'runAllScanBtn'].forEach(id => document.getElementById(id)?.removeAttribute('disabled'));
+                }, 800);
+            }
+        }
+
+        function renderSecurityExplorerStatus(st) {
+            if (!st) return;
+            const progress = Math.max(0, Math.min(100, Number(st.progressPct || 0)));
+            const elapsedSec = Math.floor((Number(st.elapsedMs || 0)) / 1000);
+            const etaSeconds = Number(st.etaSeconds);
+            const etaText = (etaSeconds >= 0) ? `${etaSeconds}s` : '-';
+
+            document.getElementById('securityExplorePhase').textContent = `phase: ${escHtml(st.phase || '-')}`;
+            document.getElementById('securityExploreEta').textContent = `ETA: ${etaText}`;
+            document.getElementById('securityExploreBar').style.width = `${progress}%`;
+            document.getElementById('securityExploreFiles').textContent = `files: ${st.scannedFiles || 0}/${st.totalFiles || 0}`;
+            document.getElementById('securityExploreMatched').textContent = `matched: ${st.matchedCount || 0}`;
+            document.getElementById('securityExploreElapsed').textContent = `elapsed: ${elapsedSec}s`;
+            document.getElementById('securityExploreCurrentTarget').textContent = st.currentTarget || '-';
+
+            const terminal = (st.terminalLines || []);
+            const terminalBox = document.getElementById('securityExploreTerminal');
+            terminalBox.textContent = terminal.length ? terminal.join('\n') : '대기 중...';
+            terminalBox.scrollTop = terminalBox.scrollHeight;
+
+            const timeline = (st.timeline || []);
+            const tl = document.getElementById('securityExploreTimeline');
+            if (!timeline.length) {
+                tl.innerHTML = `<div class="px-4 py-6 text-xs text-gray-400 text-center">이력이 없습니다.</div>`;
+            } else {
+                tl.innerHTML = timeline.slice(-80).reverse().map(r => `
+                    <div class="px-4 py-2">
+                        <div class="text-[11px] mono text-gray-500">${escHtml(r.time || '')}</div>
+                        <div class="text-xs font-bold text-indigo-700">${escHtml(r.type || '')}</div>
+                        <div class="text-xs text-gray-700 mt-0.5">${escHtml(r.message || '')}</div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        async function refreshTrafficTab() {
+            try {
+                const r = await fetch('/admin/msa/api/traffic/overview');
+                trafficOverview = await r.json();
+                const s = trafficOverview.summary || {};
+                document.getElementById('trafficUpdatedAt').textContent = escHtml(trafficOverview.time || '-');
+                document.getElementById('trafficRunningModules').textContent = `${s.runningModules || 0}/${s.totalModules || 0}`;
+                document.getElementById('trafficTotalMemory').textContent = s.totalMemoryMb || 0;
+                document.getElementById('trafficActiveUsers').textContent = s.totalActiveUsers || 0;
+                document.getElementById('trafficCpuCapacity').textContent = s.cpuCapacityPct || 0;
+                document.getElementById('trafficCpuMeta').textContent = `${s.cpuCores || 0} cores`;
+                renderTrafficModuleTable();
+                renderTrafficControllerTable();
+                await refreshTrafficLoadStatus();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function runTrafficLoadTest() {
+            const btn = document.getElementById('trafficLoadRunBtn');
+            if (btn) btn.disabled = true;
+            setTrafficLoadRunning(true);
+            try {
+                const payload = {
+                    maxUsers: readTrafficInt('trafficLoadMaxUsers', 120, 10, 500),
+                    stepUsers: readTrafficInt('trafficLoadStepUsers', 20, 5, 200),
+                    stepSeconds: readTrafficInt('trafficLoadStepSeconds', 3, 1, 20),
+                    timeoutMs: readTrafficInt('trafficLoadTimeoutMs', 2500, 300, 15000)
+                };
+                const r = await fetch('/admin/msa/api/traffic/load-test/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await r.json();
+                if (data.status !== 'ok') {
+                    showToast(data.status === 'busy' ? 'warning' : 'error', data.message || '부하 테스트 실행 실패');
+                    return;
+                }
+                trafficLoadStatus = { running: false, lastResult: data };
+                renderTrafficLoadResult(data);
+                showToast('success', '부하 테스트 실측 완료');
+            } catch (e) {
+                showToast('error', '부하 테스트 실패: ' + e.message);
+            } finally {
+                if (btn) btn.disabled = false;
+                setTrafficLoadRunning(false);
+            }
+        }
+
+        async function refreshTrafficLoadStatus() {
+            try {
+                const r = await fetch('/admin/msa/api/traffic/load-test/status');
+                const data = await r.json();
+                trafficLoadStatus = data || {};
+                setTrafficLoadRunning(!!trafficLoadStatus.running);
+                if (trafficLoadStatus.lastResult) {
+                    renderTrafficLoadResult(trafficLoadStatus.lastResult);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function setTrafficLoadRunning(running) {
+            const badge = document.getElementById('trafficLoadStatusBadge');
+            const btn = document.getElementById('trafficLoadRunBtn');
+            if (badge) {
+                badge.className = running
+                    ? 'status-badge bg-amber-100 text-amber-700'
+                    : 'status-badge bg-gray-100 text-gray-600';
+                badge.textContent = running ? '실행 중' : '대기';
+            }
+            if (btn) {
+                btn.disabled = !!running;
+                btn.classList.toggle('opacity-60', !!running);
+                btn.classList.toggle('cursor-not-allowed', !!running);
+            }
+        }
+
+        function renderTrafficLoadResult(result) {
+            const summary = result && result.summary ? result.summary : {};
+            const config = result && result.config ? result.config : {};
+            const target = result && result.target ? result.target : {};
+            const stages = Array.isArray(result && result.stages) ? result.stages : [];
+
+            document.getElementById('trafficMeterMaxUsers').textContent = toInt(summary.maxConcurrentUsers);
+            document.getElementById('trafficMeterPeakRps').textContent = toFixed2(summary.peakRps);
+            document.getElementById('trafficMeterAvgMs').textContent = toFixed2(summary.avgMsAtMax);
+            document.getElementById('trafficMeterP95Ms').textContent = toFixed2(summary.p95MsAtMax);
+            document.getElementById('trafficMeterErrorPct').textContent = toFixed2(summary.errorRatePctAtMax);
+            document.getElementById('trafficMeterTotalReq').textContent = toInt(summary.totalRequests);
+
+            document.getElementById('trafficLoadTarget').textContent = `target: ${escHtml(target.url || '-')}`;
+            document.getElementById('trafficLoadConfig').textContent = `config: max=${toInt(config.maxUsers)} step=${toInt(config.stepUsers)} sec=${toInt(config.stepSeconds)}`;
+            document.getElementById('trafficLoadRunAt').textContent = `last: ${escHtml(result.time || '-')}`;
+
+            const tbody = document.getElementById('trafficLoadStageTable');
+            if (!stages.length) {
+                tbody.innerHTML = `<tr><td colspan="7" class="px-3 py-4 text-center text-xs text-gray-400">실행 이력이 없습니다</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = stages.map(s => {
+                const stable = !!s.stable;
+                return `
+                    <tr>
+                        <td class="px-3 py-2 text-xs mono text-gray-700">${toInt(s.virtualUsers)}</td>
+                        <td class="px-3 py-2 text-xs mono text-right text-gray-700">${toInt(s.totalRequests)}</td>
+                        <td class="px-3 py-2 text-xs mono text-right text-indigo-700">${toFixed2(s.rps)}</td>
+                        <td class="px-3 py-2 text-xs mono text-right text-emerald-700">${toFixed2(s.avgMs)}</td>
+                        <td class="px-3 py-2 text-xs mono text-right text-amber-700">${toFixed2(s.p95Ms)}</td>
+                        <td class="px-3 py-2 text-xs mono text-right text-rose-700">${toFixed2(s.errorRatePct)}</td>
+                        <td class="px-3 py-2 text-center text-xs">
+                            <span class="status-badge ${stable ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}">${stable ? 'YES' : 'NO'}</span>
+                        </td>
+                    </tr>`;
+            }).join('');
+        }
+
+        function toInt(v) {
+            const n = Number(v || 0);
+            return Number.isFinite(n) ? Math.round(n) : 0;
+        }
+
+        function toFixed2(v) {
+            const n = Number(v || 0);
+            return Number.isFinite(n) ? n.toFixed(2) : '0.00';
+        }
+
+        function readTrafficInt(id, fallback, min, max) {
+            const el = document.getElementById(id);
+            if (!el) return fallback;
+            const raw = Number(el.value);
+            let n = Number.isFinite(raw) ? Math.round(raw) : fallback;
+            if (n < min) n = min;
+            if (n > max) n = max;
+            el.value = String(n);
+            return n;
+        }
+
+        function renderTrafficModuleTable() {
+            const tbody = document.getElementById('trafficModuleTable');
+            const modules = (trafficOverview && trafficOverview.modules) ? trafficOverview.modules : [];
+            if (!modules.length) {
+                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-sm text-gray-400">데이터 없음</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = modules.map(m => {
+                const running = m.status === 'running';
+                return `
+                <tr class="hover:bg-cyan-50/20">
+                    <td class="px-4 py-3 text-xs mono font-bold text-[var(--kr-gov-blue)]">${escHtml(m.module || '')} <span class="text-gray-400">${m.port || ''}</span></td>
+                    <td class="px-4 py-3 text-center text-xs"><span class="status-badge ${running ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}">${escHtml(m.status || 'stopped')}</span></td>
+                    <td class="px-4 py-3 text-right text-xs mono text-indigo-700">${m.memoryMb == null ? '-' : m.memoryMb}</td>
+                    <td class="px-4 py-3 text-right text-xs mono text-amber-700">${m.cpuPct == null ? '-' : m.cpuPct}</td>
+                    <td class="px-4 py-3 text-right text-xs mono text-emerald-700">${m.activeUsers == null ? 0 : m.activeUsers}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function renderTrafficControllerTable() {
+            const tbody = document.getElementById('trafficControllerTable');
+            const list = (trafficOverview && trafficOverview.controllers) ? trafficOverview.controllers : [];
+            if (!list.length) {
+                tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-sm text-gray-400">진입 가능한 경로가 없습니다</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = list.slice(0, 600).map(c => `
+                <tr class="hover:bg-indigo-50/20">
+                    <td class="px-4 py-3 text-xs mono font-bold text-[var(--kr-gov-blue)]">${escHtml(c.module || '')}</td>
+                    <td class="px-4 py-3 text-[11px] mono text-indigo-700">${escHtml(c.method || '')}</td>
+                    <td class="px-4 py-3 text-xs mono text-gray-700">${escHtml(c.path || '')}</td>
+                    <td class="px-4 py-3 text-xs text-gray-600">${escHtml(c.description || '')}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function refreshAccessibilityTab() {
+            try {
+                const r = await fetch('/admin/msa/api/accessibility/issues');
+                const data = await r.json();
+                accessibilityIssues = data.items || [];
+                const sev = data.severity || {};
+                document.getElementById('accCountHigh').textContent = sev.high || 0;
+                document.getElementById('accCountMedium').textContent = sev.medium || 0;
+                document.getElementById('accCountLow').textContent = sev.low || 0;
+                document.getElementById('accScannedFiles').textContent = data.scannedFiles || 0;
+                renderAccessibilityTable();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function renderAccessibilityTable() {
+            const tbody = document.getElementById('accessibilityTable');
+            if (!accessibilityIssues || accessibilityIssues.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-sm text-gray-400">수정 대상 없음</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = accessibilityIssues.slice(0, 600).map(i => {
+                const s = String(i.severity || '').toLowerCase();
+                const cls = s === 'high' ? 'bg-red-100 text-red-700'
+                    : s === 'medium' ? 'bg-amber-100 text-amber-700'
+                        : 'bg-gray-100 text-gray-700';
+                return `
+                <tr class="hover:bg-emerald-50/20">
+                    <td class="px-4 py-3 text-xs"><span class="status-badge ${cls}">${escHtml(i.severity || '')}</span></td>
+                    <td class="px-4 py-3 text-xs mono text-emerald-700">${escHtml(i.code || '')}</td>
+                    <td class="px-4 py-3 text-xs mono text-gray-700">${escHtml(i.file || '')}</td>
+                    <td class="px-4 py-3 text-xs mono text-right text-gray-500">${i.line || '-'}</td>
+                    <td class="px-4 py-3 text-xs text-gray-700">${escHtml(i.message || '')}<div class=\"text-[11px] text-gray-400 mono mt-1\">${escHtml(i.snippet || '')}</div></td>
+                </tr>`;
+            }).join('');
+        }
+
+        /* ── Kill All Java ── */
+        async function killAllJava() {
+            if (runtimeConfig.dangerousOpsBlocked) {
+                showToast('warning', '운영 보호 모드에서는 전체 종료가 차단됩니다.');
+                return;
+            }
+            if (!confirm('⚠️ 실행 중인 모든 Java/Spring Boot 프로세스를 종료합니다.\n\n이 작업은 MSA Manager 자체를 포함한 모든 Java 프로세스를 중지합니다.\n계속하시겠습니까?')) return;
+
+            const btn = document.getElementById('killAllBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">sync</span> 종료 중...';
+
+            try {
+                const res = await fetch('/admin/msa/api/killall', { method: 'POST' });
+                const data = await res.json();
+
+                const count = (data.stopped || []).length;
+                const msg = data.message || `${count}개 종료 완료`;
+                showToast(data.status === 'ok' ? 'success' : 'warning', msg);
+
+                setTimeout(() => refreshModules(), 2000);
+            } catch (e) {
+                showToast('error', '종료 요청 실패: ' + e.message);
+            } finally {
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span class="material-symbols-outlined text-[18px]">power_off</span> 전체 종료';
+                }, 3000);
+            }
+        }
+
+        function showToast(type, msg) {
+            const toast = document.getElementById('toast');
+            const inner = document.getElementById('toastInner');
+            const icon = document.getElementById('toastIcon');
+            const text = document.getElementById('toastMsg');
+
+            const styles = {
+                success: { bg: 'bg-emerald-600', icon: 'check_circle' },
+                warning: { bg: 'bg-amber-500', icon: 'warning' },
+                error: { bg: 'bg-red-600', icon: 'error' },
+                info: { bg: 'bg-blue-600', icon: 'info' },
+            };
+            const s = styles[type] || styles.info;
+            inner.className = `flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl text-sm font-bold text-white min-w-[280px] ${s.bg}`;
+            icon.textContent = s.icon;
+            text.textContent = msg;
+
+            toast.classList.remove('hidden');
+            requestAnimationFrame(() => toast.classList.remove('opacity-0'));
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                setTimeout(() => toast.classList.add('hidden'), 300);
+            }, 3500);
+        }
+
+        // Init
+        refreshModules();
+        refreshRuntimeConfig();
+        refreshAutoDeployStatus();
+        refreshWebhookConfig();
+        refreshWebhookStatus();
+        refreshRemoteConfig();
+        refreshRemoteStatus();
+        updateLogRangeLabel();
+        refreshSecurityExplorerTab();
+        restoreActiveTab();
+        setInterval(refreshModules, 5000);
+        setInterval(() => {
+            if (!document.getElementById('content-changes').classList.contains('hidden')) {
+                refreshRuntimeConfig();
+                refreshChanges();
+                refreshWebhookStatus();
+            }
+            if (!document.getElementById('content-ops-deploy').classList.contains('hidden')) {
+                refreshRemoteConfig();
+                refreshRemoteStatus();
+            }
+            if (!document.getElementById('content-logs').classList.contains('hidden')) {
+                refreshLogTab();
+            }
+            if (!document.getElementById('content-analytics').classList.contains('hidden')) {
+                refreshAnalyticsTab();
+            }
+            if (!document.getElementById('content-security').classList.contains('hidden')) {
+                refreshSecurityTab();
+            }
+            if (!document.getElementById('content-security-explorer').classList.contains('hidden') || (securityExploreStatus && securityExploreStatus.running)) {
+                refreshSecurityExplorerTab();
+            }
+            if (!document.getElementById('content-traffic').classList.contains('hidden')) {
+                refreshTrafficTab();
+            }
+            if (!document.getElementById('content-accessibility').classList.contains('hidden')) {
+                refreshAccessibilityTab();
+            }
+        }, 5000);
+    </script>
+
+</body>
+
+</html>

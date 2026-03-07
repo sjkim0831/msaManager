@@ -1,0 +1,15 @@
+services:
+  msa-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: msa-manager
+    restart: unless-stopped
+    environment:
+      CARBOSYS_ROOT: /opt/carbosys
+      MSA_SSH_EDIT_TOKEN: ${MSA_SSH_EDIT_TOKEN:-}
+    ports:
+      - "18030:18030"
+    volumes:
+      - "/opt/carbosys:/opt/carbosys"
+      - "./logs:/opt/msaManager/logs"

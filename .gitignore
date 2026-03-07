@@ -1,0 +1,3 @@
+logs/
+module/**/target/
+*.log
