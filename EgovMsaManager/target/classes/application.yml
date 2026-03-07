@@ -1,0 +1,16 @@
+server:
+  port: 18030
+
+spring:
+  application:
+    name: EgovMsaManager
+  thymeleaf:
+    encoding: UTF-8
+    mode: HTML
+    cache: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, logfile

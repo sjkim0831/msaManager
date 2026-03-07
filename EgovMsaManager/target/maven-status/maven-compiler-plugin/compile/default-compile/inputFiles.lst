@@ -1,0 +1,10 @@
+/opt/util/msaManager/EgovMsaManager/src/main/java/egovframework/com/msa/manager/MsaProcessManager.java
+/opt/util/msaManager/EgovMsaManager/src/main/java/egovframework/com/msa/manager/LogAnalyticsService.java
+/opt/util/msaManager/EgovMsaManager/src/main/java/egovframework/com/msa/manager/ChangeMonitorService.java
+/opt/util/msaManager/EgovMsaManager/src/main/java/egovframework/com/msa/manager/RootRedirectController.java
+/opt/util/msaManager/EgovMsaManager/src/main/java/egovframework/com/msa/manager/MsaController.java
+/opt/util/msaManager/EgovMsaManager/src/main/java/egovframework/com/msa/manager/OpsInsightService.java
+/opt/util/msaManager/EgovMsaManager/src/main/java/egovframework/com/msa/manager/MsaShortcutController.java
+/opt/util/msaManager/EgovMsaManager/src/main/java/egovframework/com/msa/manager/EgovMsaManagerApplication.java
+/opt/util/msaManager/EgovMsaManager/src/main/java/egovframework/com/msa/manager/MsaScanner.java
+/opt/util/msaManager/EgovMsaManager/src/main/java/egovframework/com/msa/manager/AppPaths.java
