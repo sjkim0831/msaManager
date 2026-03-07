@@ -341,6 +341,35 @@
                         <span id="remoteModeBadge" class="px-2 py-0.5 rounded text-[11px] bg-gray-100 text-gray-700 mono">mode: development</span>
                     </div>
                     <p class="text-xs text-gray-500 mt-2">개발 서버에서만 원격 배포 실행 가능. 운영 모드에서는 차단됩니다.</p>
+                    <div class="mt-4 rounded border border-slate-200 bg-slate-50 p-3">
+                        <div class="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
+                            <label class="text-xs font-bold text-gray-600 md:col-span-2">프로젝트 선택
+                                <select id="projectSelect" onchange="onProjectSelectChanged()" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs"></select>
+                            </label>
+                            <label class="text-xs font-bold text-gray-600 md:col-span-1">프로젝트 ID
+                                <input id="projectIdInput" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="proj-a" />
+                            </label>
+                            <label class="text-xs font-bold text-gray-600 md:col-span-1">프로젝트 이름
+                                <input id="projectNameInput" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="프로젝트A" />
+                            </label>
+                            <label class="text-xs font-bold text-gray-600 md:col-span-2">SSH 권한 토큰 (MSA_SSH_EDIT_TOKEN)
+                                <input id="projectSshToken" type="password" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="X-MSA-SSH-TOKEN" />
+                            </label>
+                        </div>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <button onclick="refreshProjectRegistry()" class="px-3 py-2 rounded text-[12px] font-bold border border-gray-300 text-gray-700 hover:bg-gray-100">목록 새로고침</button>
+                            <button onclick="saveProjectFromRemoteConfig()" class="px-3 py-2 rounded text-[12px] font-bold border border-blue-300 text-blue-700 hover:bg-blue-100">현재 설정으로 프로젝트 저장</button>
+                            <button onclick="deleteSelectedProject()" class="px-3 py-2 rounded text-[12px] font-bold border border-rose-300 text-rose-700 hover:bg-rose-100">선택 프로젝트 삭제</button>
+                            <button onclick="loadProjectModules()" class="px-3 py-2 rounded text-[12px] font-bold border border-indigo-300 text-indigo-700 hover:bg-indigo-100">선택 프로젝트 모듈 조회</button>
+                        </div>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            <button onclick="runProjectModuleAction('start')" class="px-3 py-1 rounded text-[11px] font-bold border border-emerald-300 text-emerald-700 hover:bg-emerald-100">선택 모듈 시작</button>
+                            <button onclick="runProjectModuleAction('stop')" class="px-3 py-1 rounded text-[11px] font-bold border border-amber-300 text-amber-700 hover:bg-amber-100">선택 모듈 중지</button>
+                            <button onclick="runProjectModuleAction('restart')" class="px-3 py-1 rounded text-[11px] font-bold border border-violet-300 text-violet-700 hover:bg-violet-100">선택 모듈 재시작</button>
+                            <button onclick="runProjectSshTest()" class="px-3 py-1 rounded text-[11px] font-bold border border-cyan-300 text-cyan-700 hover:bg-cyan-100">SSH 연결 테스트</button>
+                        </div>
+                        <div class="mt-2 text-[11px] text-gray-500 mono" id="projectInfoLine">project: -</div>
+                    </div>
                     <div class="mt-4 grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
                         <label class="text-xs font-bold text-gray-600 md:col-span-2">Host
                             <input id="remoteHost" type="text" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs" placeholder="10.0.0.10" />
@@ -1008,8 +1037,12 @@
             buildAllowed: true
         };
         let remoteDeployConfig = {};
+        let projectRegistry = [];
+        let selectedProjectId = '';
+        let selectedProjectModules = [];
         let webhookTokenPlain = '';
         const webhookTokenStorageKey = 'msaWebhookTokenPlain';
+        const sshTokenStorageKey = 'msaProjectSshToken';
         const tabStorageKey = 'msaManagerActiveTab';
         function loadWebhookTokenCache() {
             try {
@@ -1891,14 +1924,224 @@
         }
 
         async function refreshOpsDeployTab() {
-            await Promise.all([refreshRemoteConfig(), refreshRemoteStatus()]);
+            await Promise.all([refreshRemoteConfig(), refreshRemoteStatus(), refreshProjectRegistry()]);
             fillRemoteModuleSelect();
+        }
+
+        function sshHeaders() {
+            const tokenEl = document.getElementById('projectSshToken');
+            const token = (tokenEl?.value || '').trim();
+            if (token) {
+                try { sessionStorage.setItem(sshTokenStorageKey, token); } catch (e) { }
+                return { 'X-MSA-SSH-TOKEN': token };
+            }
+            return {};
+        }
+
+        function restoreSshToken() {
+            try {
+                const v = sessionStorage.getItem(sshTokenStorageKey) || '';
+                const tokenEl = document.getElementById('projectSshToken');
+                if (tokenEl && v) tokenEl.value = v;
+            } catch (e) { }
+        }
+
+        async function refreshProjectRegistry() {
+            try {
+                restoreSshToken();
+                const r = await fetch('/admin/msa/api/projects');
+                const data = await r.json();
+                projectRegistry = data.projects || [];
+                const sel = document.getElementById('projectSelect');
+                if (sel) {
+                    const current = selectedProjectId || sel.value;
+                    sel.innerHTML = `<option value="">(프로젝트 선택)</option>` + projectRegistry.map(p => {
+                        const id = escHtml(p.id || '');
+                        const name = escHtml(p.name || p.id || '');
+                        return `<option value="${id}">${name} (${id})</option>`;
+                    }).join('');
+                    if (current && projectRegistry.some(p => p.id === current)) {
+                        sel.value = current;
+                        selectedProjectId = current;
+                    } else {
+                        selectedProjectId = '';
+                    }
+                }
+                syncProjectInfoLine();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function onProjectSelectChanged() {
+            const sel = document.getElementById('projectSelect');
+            selectedProjectId = sel?.value || '';
+            const p = projectRegistry.find(x => x.id === selectedProjectId);
+            if (!p) {
+                syncProjectInfoLine();
+                return;
+            }
+            const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+            setVal('projectIdInput', p.id);
+            setVal('projectNameInput', p.name || p.id);
+            setVal('remoteHost', p.host);
+            setVal('remotePort', p.port || '22');
+            setVal('remoteUser', p.user);
+            setVal('remoteKeyPath', p.keyPath);
+            setVal('remoteDir', p.rootDir || appRoot);
+            setVal('remoteContainerName', p.containerName || 'carbosys-app');
+            setVal('remoteManagerUrl', p.managerUrl || 'http://localhost:18030');
+            syncProjectInfoLine();
+        }
+
+        function syncProjectInfoLine(extra) {
+            const info = document.getElementById('projectInfoLine');
+            if (!info) return;
+            const p = projectRegistry.find(x => x.id === selectedProjectId);
+            if (!p) {
+                info.textContent = `project: -, registered=${projectRegistry.length}`;
+                return;
+            }
+            const base = `project: ${p.name || p.id} (${p.id}), ${p.user || '-'}@${p.host || '-'}:${p.port || '22'}, root=${p.rootDir || '-'}`;
+            info.textContent = extra ? `${base} | ${extra}` : base;
+        }
+
+        async function saveProjectFromRemoteConfig() {
+            try {
+                const id = (document.getElementById('projectIdInput')?.value || '').trim();
+                if (!id) {
+                    showToast('warning', '프로젝트 ID를 입력하세요.');
+                    return;
+                }
+                const payload = {
+                    id,
+                    name: document.getElementById('projectNameInput')?.value || id,
+                    host: document.getElementById('remoteHost')?.value || '',
+                    port: document.getElementById('remotePort')?.value || '22',
+                    user: document.getElementById('remoteUser')?.value || '',
+                    keyPath: document.getElementById('remoteKeyPath')?.value || '',
+                    password: document.getElementById('remotePassword')?.value || '',
+                    rootDir: document.getElementById('remoteDir')?.value || appRoot,
+                    containerName: document.getElementById('remoteContainerName')?.value || 'carbosys-app',
+                    managerUrl: document.getElementById('remoteManagerUrl')?.value || 'http://localhost:18030',
+                    enabled: true
+                };
+                const r = await fetch('/admin/msa/api/projects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'save failed');
+                selectedProjectId = id;
+                showToast('success', '프로젝트 저장 완료');
+                await refreshProjectRegistry();
+                onProjectSelectChanged();
+            } catch (e) {
+                showToast('error', '프로젝트 저장 실패: ' + e.message);
+            }
+        }
+
+        async function deleteSelectedProject() {
+            try {
+                const id = selectedProjectId || (document.getElementById('projectSelect')?.value || '');
+                if (!id) {
+                    showToast('warning', '삭제할 프로젝트를 선택하세요.');
+                    return;
+                }
+                if (!confirm(`${id} 프로젝트를 삭제할까요?`)) return;
+                const r = await fetch(`/admin/msa/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'delete failed');
+                selectedProjectId = '';
+                selectedProjectModules = [];
+                showToast('success', '프로젝트 삭제 완료');
+                await refreshProjectRegistry();
+                fillRemoteModuleSelect();
+            } catch (e) {
+                showToast('error', '프로젝트 삭제 실패: ' + e.message);
+            }
+        }
+
+        async function loadProjectModules() {
+            try {
+                const id = selectedProjectId || (document.getElementById('projectSelect')?.value || '');
+                if (!id) {
+                    showToast('warning', '프로젝트를 먼저 선택하세요.');
+                    return;
+                }
+                const r = await fetch(`/admin/msa/api/projects/${encodeURIComponent(id)}/manager/modules`, {
+                    headers: { ...sshHeaders() }
+                });
+                const text = await r.text();
+                let data;
+                try { data = JSON.parse(text); } catch (e) { throw new Error(text || 'invalid json'); }
+                if (!Array.isArray(data)) {
+                    if (data.status === 'error') throw new Error(data.message || 'fetch failed');
+                    throw new Error('모듈 목록 응답 형식 오류');
+                }
+                selectedProjectModules = data;
+                fillRemoteModuleSelect();
+                syncProjectInfoLine(`modules=${selectedProjectModules.length}`);
+                showToast('success', `모듈 ${selectedProjectModules.length}개 조회 완료`);
+            } catch (e) {
+                showToast('error', '프로젝트 모듈 조회 실패: ' + e.message);
+            }
+        }
+
+        async function runProjectModuleAction(action) {
+            try {
+                const id = selectedProjectId || (document.getElementById('projectSelect')?.value || '');
+                const moduleId = document.getElementById('remoteModuleSelect')?.value || '';
+                if (!id) {
+                    showToast('warning', '프로젝트를 선택하세요.');
+                    return;
+                }
+                if (!moduleId) {
+                    showToast('warning', '모듈을 선택하세요.');
+                    return;
+                }
+                const actionLabel = { start: '시작', stop: '중지', restart: '재시작' }[action] || action;
+                if (!confirm(`${id} / ${moduleId} 모듈 ${actionLabel}을 실행할까요?`)) return;
+                const r = await fetch(`/admin/msa/api/projects/${encodeURIComponent(id)}/manager/modules/${encodeURIComponent(moduleId)}/${encodeURIComponent(action)}`, {
+                    method: 'POST',
+                    headers: { ...sshHeaders() }
+                });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'action failed');
+                showToast('success', `${moduleId} ${actionLabel} 요청 완료`);
+                await loadProjectModules();
+            } catch (e) {
+                showToast('error', '프로젝트 모듈 제어 실패: ' + e.message);
+            }
+        }
+
+        async function runProjectSshTest() {
+            try {
+                const id = selectedProjectId || (document.getElementById('projectSelect')?.value || '');
+                if (!id) {
+                    showToast('warning', '프로젝트를 선택하세요.');
+                    return;
+                }
+                const r = await fetch(`/admin/msa/api/projects/${encodeURIComponent(id)}/ssh/test`, {
+                    method: 'POST',
+                    headers: { ...sshHeaders() }
+                });
+                const data = await r.json();
+                if (data.status !== 'ok') throw new Error(data.message || 'ssh test failed');
+                showToast('success', `SSH 테스트 성공: ${id}`);
+                syncProjectInfoLine('ssh=ok');
+            } catch (e) {
+                showToast('error', 'SSH 테스트 실패: ' + e.message);
+            }
         }
 
         function fillRemoteModuleSelect() {
             const sel = document.getElementById('remoteModuleSelect');
             if (!sel) return;
-            const rows = (modules || []).filter(m => m && m.javaRunnable && m.id !== 'EgovMsaManager');
+            const rows = selectedProjectModules.length
+                ? selectedProjectModules.filter(m => m && m.id)
+                : (modules || []).filter(m => m && m.javaRunnable && m.id !== 'EgovMsaManager');
             const current = sel.value;
             sel.innerHTML = rows.map(m => `<option value="${m.id}">${m.id}</option>`).join('');
             if (current && rows.some(r => r.id === current)) sel.value = current;
