@@ -16,6 +16,9 @@ import java.io.BufferedWriter;
 import java.io.FileOutputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -758,6 +761,25 @@ public class MsaController {
     }
 
     @ResponseBody
+    @GetMapping("/api/projects/{id}/manager/url")
+    public Map<String, Object> getProjectManagerUrl(@PathVariable String id, HttpServletRequest request) {
+        Map<String, Object> project = findProject(id);
+        if (project == null) {
+            return Map.of("status", "error", "message", "프로젝트를 찾지 못했습니다: " + id);
+        }
+        Map<String, Object> denied = verifyProjectPermission(request, project);
+        if (denied != null) {
+            return denied;
+        }
+        String managerUrl = resolveProjectManagerUrl(project);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("status", "ok");
+        out.put("projectId", id);
+        out.put("managerUrl", managerUrl);
+        return out;
+    }
+
+    @ResponseBody
     @GetMapping("/api/projects/{id}/discover/mappings")
     public Map<String, Object> discoverProjectMappings(@PathVariable String id, HttpServletRequest request) {
         Map<String, Object> project = findProject(id);
@@ -769,13 +791,21 @@ public class MsaController {
             return denied;
         }
         String rootDir = firstNonEmpty(str(project.get("rootDir")), APP_ROOT);
-        String cmd = "cd " + shellQuote(rootDir)
-                + " && grep -R -n -E " + shellQuote("@(RequestMapping|GetMapping|PostMapping|PutMapping|DeleteMapping)\\(")
-                + " module/*/src/main/java 2>/dev/null || true";
+        String runMode = resolveProjectRunMode(project);
+        String cmd;
+        if ("mvn".equals(runMode)) {
+            cmd = "cd " + shellQuote(rootDir)
+                    + " && grep -R -n -E " + shellQuote("@(RequestMapping|GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\\(")
+                    + " module/*/src/main/java src/main/java 2>/dev/null || true";
+        } else {
+            cmd = "cd " + shellQuote(rootDir)
+                    + " && grep -R -n -E " + shellQuote("@(RequestMapping|GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\\(")
+                    + " src/main/java 2>/dev/null || true";
+        }
         try {
             Map<String, Object> exec = runProjectCapture(project, cmd);
             String output = str(exec.get("output"));
-            List<Map<String, Object>> mappings = parseDiscoveredMappings(output);
+            List<Map<String, Object>> mappings = parseDiscoveredMappings(output, rootDir);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("status", "ok");
             out.put("rootDir", rootDir);
@@ -784,6 +814,132 @@ public class MsaController {
             return out;
         } catch (Exception e) {
             return Map.of("status", "error", "message", "프로젝트 매핑 탐색 실패: " + e.getMessage());
+        }
+    }
+
+    @ResponseBody
+    @PostMapping("/api/projects/{id}/discover/execute")
+    public ResponseEntity<?> executeProjectApi(@PathVariable String id,
+            @RequestBody(required = false) Map<String, Object> req,
+            HttpServletRequest request) {
+        Map<String, Object> project = findProject(id);
+        if (project == null) {
+            return ResponseEntity.badRequest().body(Map.of("status", "error", "message", "프로젝트를 찾지 못했습니다: " + id));
+        }
+        Map<String, Object> denied = verifyProjectPermission(request, project);
+        if (denied != null) {
+            return ResponseEntity.status(403).body(denied);
+        }
+
+        String targetUrl = req == null ? "" : str(req.get("targetUrl")).trim();
+        String method = req == null ? "GET" : str(req.get("method")).toUpperCase(Locale.ROOT);
+        String body = req == null ? "" : str(req.get("body"));
+        String token = req == null ? "" : str(req.get("token"));
+        String codeId = req == null ? "" : str(req.get("codeId"));
+        if (targetUrl.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("status", "error", "message", "targetUrl is required"));
+        }
+        if (!(method.equals("GET") || method.equals("POST") || method.equals("PUT") || method.equals("PATCH") || method.equals("DELETE"))) {
+            method = "GET";
+        }
+        if (!isAllowedTargetUrl(targetUrl)) {
+            return ResponseEntity.badRequest().body(Map.of("status", "error", "message", "허용되지 않은 targetUrl 입니다. localhost/127.0.0.1만 허용됩니다."));
+        }
+
+        String rootDir = firstNonEmpty(str(project.get("rootDir")), APP_ROOT);
+        try {
+            StringBuilder cmd = new StringBuilder();
+            cmd.append("cd ").append(shellQuote(rootDir)).append(" && ");
+            boolean loginAction = targetUrl.contains("/signin/actionLogin") || targetUrl.contains("/admin/login/actionLogin");
+            String bodyPayload = (body == null || body.trim().isEmpty()) ? "{}" : body.trim();
+            if (loginAction) {
+                String loginView = targetUrl.contains("/admin/login/actionLogin")
+                        ? targetUrl.replace("/admin/login/actionLogin", "/admin/login/loginView")
+                        : targetUrl.replace("/signin/actionLogin", "/signin/loginView");
+                cmd.append("tmp=$(mktemp -u /tmp/msaexec.XXXXXX) && ");
+                cmd.append("cookie=\"$tmp.cookie\" && ");
+                cmd.append("csrf=$(curl -sS -c \"$cookie\" -b \"$cookie\" ").append(shellQuote(loginView))
+                        .append(" | sed -n 's/.*name=\"_csrf\" content=\"\\([^\"]*\\)\".*/\\1/p' | head -n1) && ");
+                cmd.append("curl -sS -i -b \"$cookie\" -c \"$cookie\" ");
+                cmd.append("-X ").append(shellQuote(method)).append(" ");
+                cmd.append("-H ").append(shellQuote("Content-Type: application/json")).append(" ");
+                cmd.append("-H \"X-CSRF-TOKEN: $csrf\" ");
+                if (!token.isEmpty()) {
+                    cmd.append("-H ").append(shellQuote("Authorization: Bearer " + token)).append(" ");
+                }
+                if (!codeId.isEmpty()) {
+                    cmd.append("-H ").append(shellQuote("X-CODE-ID: " + codeId)).append(" ");
+                }
+                if (!"GET".equals(method) && !"DELETE".equals(method)) {
+                    cmd.append("--data-binary ").append(shellQuote(bodyPayload)).append(" ");
+                }
+                cmd.append(shellQuote(targetUrl)).append(" ; rm -f \"$cookie\"");
+            } else {
+                cmd.append("curl -sS -i ");
+                cmd.append("-X ").append(shellQuote(method)).append(" ");
+                cmd.append("-H ").append(shellQuote("Content-Type: application/json")).append(" ");
+                if (!token.isEmpty()) {
+                    cmd.append("-H ").append(shellQuote("Authorization: Bearer " + token)).append(" ");
+                }
+                if (!codeId.isEmpty()) {
+                    cmd.append("-H ").append(shellQuote("X-CODE-ID: " + codeId)).append(" ");
+                }
+                if (!"GET".equals(method) && !"DELETE".equals(method) && body != null && !body.trim().isEmpty()) {
+                    cmd.append("--data-binary ").append(shellQuote(body)).append(" ");
+                }
+                cmd.append(shellQuote(targetUrl));
+            }
+
+            Map<String, Object> exec = runProjectCapture(project, cmd.toString());
+            String raw = str(exec.get("output"));
+
+            int status = 0;
+            String headers = "";
+            String responseBody = raw;
+            int headerEnd = raw.indexOf("\r\n\r\n");
+            if (headerEnd < 0) headerEnd = raw.indexOf("\n\n");
+            if (headerEnd >= 0) {
+                headers = raw.substring(0, headerEnd);
+                responseBody = raw.substring(headerEnd + (raw.startsWith("\r\n", headerEnd) ? 4 : 2));
+                for (String l : headers.split("\\r?\\n")) {
+                    if (l.startsWith("HTTP/")) {
+                        String[] p = l.split(" ");
+                        if (p.length >= 2) {
+                            try {
+                                status = Integer.parseInt(p[1]);
+                            } catch (Exception ignored) {
+                            }
+                        }
+                    }
+                }
+            }
+
+            Map<String, Object> out = new LinkedHashMap<>();
+            Map<String, String> cookieTokens = new LinkedHashMap<>();
+            for (String l : headers.split("\\r?\\n")) {
+                String lower = l.toLowerCase(Locale.ROOT);
+                if (!lower.startsWith("set-cookie:")) continue;
+                int cidx = l.indexOf(':');
+                if (cidx < 0) continue;
+                String cookiePart = l.substring(cidx + 1).trim();
+                int eq = cookiePart.indexOf('=');
+                int semi = cookiePart.indexOf(';');
+                if (eq <= 0) continue;
+                String name = cookiePart.substring(0, eq).trim();
+                String value = semi > eq ? cookiePart.substring(eq + 1, semi).trim() : cookiePart.substring(eq + 1).trim();
+                if (!name.isEmpty() && !value.isEmpty()) {
+                    cookieTokens.put(name, value);
+                }
+            }
+            out.put("status", "ok");
+            out.put("httpStatus", status);
+            out.put("headersRaw", headers);
+            out.put("body", responseBody == null ? "" : responseBody.trim());
+            out.put("targetUrl", targetUrl);
+            out.put("cookieTokens", cookieTokens);
+            return ResponseEntity.ok(out);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("status", "error", "message", "API 실행 실패: " + e.getMessage()));
         }
     }
 
@@ -807,7 +963,7 @@ public class MsaController {
         if (denied != null) {
             return denied;
         }
-        String runMode = normalizeRunMode(str(project.get("runMode")));
+        String runMode = resolveProjectRunMode(project);
         try {
             if ("docker".equals(runMode)) {
                 return runProjectDockerModuleAction(project, moduleId, action);
@@ -856,7 +1012,7 @@ public class MsaController {
         if (denied != null) {
             return ResponseEntity.status(403).body(denied);
         }
-        String managerUrl = firstNonEmpty(str(project.get("managerUrl")), "http://localhost:18030");
+        String managerUrl = resolveProjectManagerUrl(project);
         String rootDir = firstNonEmpty(str(project.get("rootDir")), APP_ROOT);
         String targetUrl = managerUrl + path;
         try {
@@ -1140,14 +1296,38 @@ public class MsaController {
     @ResponseBody
     @GetMapping("/api/stats/controllers")
     public List<Map<String, Object>> getControllerStats(@RequestParam(required = false) String from,
-                                                         @RequestParam(required = false) String to) {
+                                                         @RequestParam(required = false) String to,
+                                                         @RequestParam(required = false) String projectId,
+                                                         HttpServletRequest request) {
+        if (projectId != null && !projectId.trim().isEmpty()) {
+            Map<String, Object> project = findProject(projectId.trim());
+            if (project != null) {
+                Map<String, Object> denied = verifyProjectPermission(request, project);
+                if (denied == null) {
+                    String rootDir = firstNonEmpty(str(project.get("rootDir")), APP_ROOT);
+                    return logAnalyticsService.getTopControllersForRoot(rootDir, parseTimeParam(from), parseTimeParam(to));
+                }
+            }
+        }
         return logAnalyticsService.getTopControllers(parseTimeParam(from), parseTimeParam(to));
     }
 
     @ResponseBody
     @GetMapping("/api/stats/errors")
     public List<Map<String, Object>> getErrorStats(@RequestParam(required = false) String from,
-                                                    @RequestParam(required = false) String to) {
+                                                    @RequestParam(required = false) String to,
+                                                    @RequestParam(required = false) String projectId,
+                                                    HttpServletRequest request) {
+        if (projectId != null && !projectId.trim().isEmpty()) {
+            Map<String, Object> project = findProject(projectId.trim());
+            if (project != null) {
+                Map<String, Object> denied = verifyProjectPermission(request, project);
+                if (denied == null) {
+                    String rootDir = firstNonEmpty(str(project.get("rootDir")), APP_ROOT);
+                    return logAnalyticsService.getTopErrorsForRoot(rootDir, parseTimeParam(from), parseTimeParam(to));
+                }
+            }
+        }
         return logAnalyticsService.getTopErrors(parseTimeParam(from), parseTimeParam(to));
     }
 
@@ -2150,10 +2330,10 @@ public class MsaController {
         }
         try {
             Path root = Paths.get(rootDir);
-            if (Files.exists(root.resolve("docker-compose.yml")) || Files.exists(root.resolve("compose.yml")) || Files.exists(root.resolve("compose.yaml"))) {
-                return "docker";
-            }
             if (Files.isDirectory(root.resolve("module"))) {
+                return "mvn";
+            }
+            if (Files.exists(root.resolve("pom.xml")) && Files.isDirectory(root.resolve("src"))) {
                 return "mvn";
             }
         } catch (Exception ignored) {
@@ -2173,6 +2353,111 @@ public class MsaController {
         } catch (Exception ignored) {
         }
         return "docker-compose.yml";
+    }
+
+    private String resolveProjectManagerUrl(Map<String, Object> project) {
+        String managerUrl = firstNonEmpty(str(project.get("managerUrl")), "http://localhost:18030");
+        String rootDir = firstNonEmpty(str(project.get("rootDir")), APP_ROOT);
+        if (!isLocalProject(project)) {
+            return managerUrl;
+        }
+        if (rootDir.equals(APP_ROOT)) {
+            return managerUrl;
+        }
+        int port = deriveProjectManagerPort(rootDir);
+        String localUrl = "http://127.0.0.1:" + port;
+        if (!isManagerApiReachable(localUrl)) {
+            if (!isProjectManagerProcessRunning(rootDir, port)) {
+                startLocalProjectManager(rootDir, port);
+            }
+            for (int i = 0; i < 20; i++) {
+                if (isManagerApiReachable(localUrl)) {
+                    break;
+                }
+                try {
+                    Thread.sleep(300L);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        return localUrl;
+    }
+
+    private int deriveProjectManagerPort(String rootDir) {
+        int h = Math.abs(str(rootDir).hashCode());
+        return 18130 + (h % 60);
+    }
+
+    private boolean isManagerApiReachable(String baseUrl) {
+        HttpURLConnection conn = null;
+        try {
+            URL u = new URL(baseUrl + "/admin/msa/api/modules");
+            conn = (HttpURLConnection) u.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(1200);
+            conn.setReadTimeout(1200);
+            int code = conn.getResponseCode();
+            return code >= 200 && code < 500;
+        } catch (Exception ignored) {
+            return false;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private void startLocalProjectManager(String rootDir, int port) {
+        try {
+            String logFile = rootDir + "/logs/msa-manager-" + port + ".log";
+            Path managerDirPath = Paths.get("/opt/util/msaManager/EgovMsaManager");
+            if (!Files.isDirectory(managerDirPath)) {
+                managerDirPath = AppPaths.resolvePath("EgovMsaManager");
+            }
+            if (!Files.isDirectory(managerDirPath)) {
+                return;
+            }
+            String managerDir = managerDirPath.toString();
+            Path jarPath = managerDirPath.resolve("target").resolve("EgovMsaManager.jar");
+            String launchCmd;
+            if (Files.isRegularFile(jarPath)) {
+                launchCmd = "nohup java "
+                        + "-Dcarbosys.root=" + shellQuote(rootDir) + " "
+                        + "-jar " + shellQuote(jarPath.toString()) + " "
+                        + "--server.port=" + port
+                        + " > " + shellQuote(logFile) + " 2>&1 &";
+            } else {
+                launchCmd = "nohup /usr/bin/mvn spring-boot:run "
+                        + "-Dspring-boot.run.jvmArguments=" + shellQuote("-Dcarbosys.root=" + rootDir) + " "
+                        + "-Dspring-boot.run.arguments=" + shellQuote("--server.port=" + port)
+                        + " > " + shellQuote(logFile) + " 2>&1 &";
+            }
+            String cmd = "mkdir -p " + shellQuote(rootDir + "/logs") + " && "
+                    + "cd " + shellQuote(managerDir) + " && "
+                    + launchCmd;
+            new ProcessBuilder("sh", "-lc", cmd).start();
+            try {
+                Thread.sleep(1400L);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private boolean isProjectManagerProcessRunning(String rootDir, int port) {
+        try {
+            String pattern = "carbosys.root=" + rootDir + " .*--server.port=" + port;
+            Process p = new ProcessBuilder("sh", "-lc",
+                    "pgrep -f " + shellQuote(pattern) + " >/dev/null 2>&1 && echo yes || echo no")
+                    .start();
+            BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8));
+            String line = br.readLine();
+            p.waitFor();
+            return "yes".equalsIgnoreCase(str(line).trim());
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private synchronized void saveProjectRegistry(List<Map<String, Object>> projects) {
@@ -2203,7 +2488,11 @@ public class MsaController {
         String rootDir = firstNonEmpty(str(src.get("rootDir")), APP_ROOT);
         p.put("rootDir", rootDir);
         String runModeRaw = firstNonEmpty(str(src.get("runMode")), detectRunModeByRoot(rootDir));
-        p.put("runMode", normalizeRunMode(runModeRaw));
+        String normalizedRunMode = normalizeRunMode(runModeRaw);
+        if ("docker".equals(normalizedRunMode)) {
+            normalizedRunMode = detectRunModeByRoot(rootDir);
+        }
+        p.put("runMode", normalizedRunMode);
         p.put("managerUrl", firstNonEmpty(str(src.get("managerUrl")), "http://localhost:18030"));
         p.put("containerName", firstNonEmpty(str(src.get("containerName")), "carbosys-app"));
         p.put("dockerComposeFile", firstNonEmpty(str(src.get("dockerComposeFile")), detectComposeFileByRoot(rootDir)));
@@ -2220,7 +2509,7 @@ public class MsaController {
     }
 
     private List<Map<String, Object>> listProjectModules(Map<String, Object> project) throws Exception {
-        String runMode = normalizeRunMode(str(project.get("runMode")));
+        String runMode = resolveProjectRunMode(project);
         if ("manager".equals(runMode)) {
             return listProjectModulesViaManager(project);
         }
@@ -2230,60 +2519,81 @@ public class MsaController {
         return listProjectModulesViaMvn(project);
     }
 
+    private String resolveProjectRunMode(Map<String, Object> project) {
+        String runMode = normalizeRunMode(str(project.get("runMode")));
+        if (!"docker".equals(runMode)) {
+            return runMode;
+        }
+        String rootDir = firstNonEmpty(str(project.get("rootDir")), APP_ROOT);
+        return detectRunModeByRoot(rootDir);
+    }
+
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> listProjectModulesViaManager(Map<String, Object> project) throws Exception {
-        if (isLocalProject(project)) {
-            return getModules();
-        }
-        String managerUrl = firstNonEmpty(str(project.get("managerUrl")), "http://localhost:18030");
+        String managerUrl = resolveProjectManagerUrl(project);
         String rootDir = firstNonEmpty(str(project.get("rootDir")), APP_ROOT);
         String cmd = "cd " + shellQuote(rootDir) + " && "
                 + "curl -sS " + shellQuote(managerUrl + "/admin/msa/api/modules");
-        Map<String, Object> exec = runProjectCapture(project, cmd);
-        String output = str(exec.get("output")).trim();
-        if (output.isEmpty()) {
-            return new ArrayList<>();
-        }
-        Object parsed = new Yaml().load(output);
-        if (!(parsed instanceof List)) {
-            throw new RuntimeException("manager 응답이 배열 형식이 아닙니다.");
-        }
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Object row : (List<?>) parsed) {
-            if (!(row instanceof Map)) {
-                continue;
+        try {
+            Map<String, Object> exec = runProjectCapture(project, cmd);
+            String output = str(exec.get("output")).trim();
+            if (output.isEmpty()) {
+                return new ArrayList<>();
             }
-            Map<String, Object> src = (Map<String, Object>) row;
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("id", str(src.get("id")));
-            item.put("name", firstNonEmpty(str(src.get("name")), str(src.get("id"))));
-            item.put("dir", str(src.get("dir")));
-            item.put("port", src.get("port"));
-            item.put("javaRunnable", src.getOrDefault("javaRunnable", true));
-            item.put("status", firstNonEmpty(str(src.get("status")), "unknown"));
-            item.put("pid", src.get("pid"));
-            out.add(item);
+            Object parsed = new Yaml().load(output);
+            if (!(parsed instanceof List)) {
+                throw new RuntimeException("manager 응답이 배열 형식이 아닙니다.");
+            }
+            List<Map<String, Object>> out = new ArrayList<>();
+            for (Object row : (List<?>) parsed) {
+                if (!(row instanceof Map)) {
+                    continue;
+                }
+                Map<String, Object> src = (Map<String, Object>) row;
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("id", str(src.get("id")));
+                item.put("name", firstNonEmpty(str(src.get("name")), str(src.get("id"))));
+                item.put("dir", str(src.get("dir")));
+                item.put("port", src.get("port"));
+                item.put("javaRunnable", src.getOrDefault("javaRunnable", true));
+                item.put("status", firstNonEmpty(str(src.get("status")), "unknown"));
+                item.put("pid", src.get("pid"));
+                out.add(item);
+            }
+            return out;
+        } catch (Exception e) {
+            if (isLocalProject(project)) {
+                return listProjectModulesViaMvn(project);
+            }
+            throw e;
         }
-        return out;
     }
 
     private List<Map<String, Object>> listProjectModulesViaMvn(Map<String, Object> project) throws Exception {
         String rootDir = firstNonEmpty(str(project.get("rootDir")), APP_ROOT);
         String cmd = "set -e; cd " + shellQuote(rootDir) + "; "
+                + "rows=''; "
+                + "if [ -d module ]; then "
                 + "for d in module/*; do "
                 + "[ -d \"$d\" ] || continue; "
                 + "id=$(basename \"$d\"); "
                 + "port=$(grep -RhoE 'server\\.port\\s*[:=]\\s*[0-9]+' \"$d/src/main/resources\" 2>/dev/null | head -n1 | sed -E 's/.*[:=]\\s*([0-9]+).*/\\1/'); "
                 + "status=stopped; pid=''; "
-                + "if [ -n \"$port\" ]; then "
-                + "pid=$(lsof -tiTCP:\"$port\" -sTCP:LISTEN 2>/dev/null | head -n1 || true); "
-                + "fi; "
-                + "if [ -z \"$pid\" ]; then "
-                + "pid=$(pgrep -f \"module/$id\" | head -n1 || true); "
-                + "fi; "
+                + "if [ -n \"$port\" ]; then pid=$(lsof -tiTCP:\"$port\" -sTCP:LISTEN 2>/dev/null | head -n1 || true); fi; "
+                + "if [ -z \"$pid\" ]; then pid=$(pgrep -f \"module/$id\" | head -n1 || true); fi; "
                 + "if [ -n \"$pid\" ]; then status=running; fi; "
                 + "echo \"$id|$port|$status|$pid\"; "
-                + "done";
+                + "done; "
+                + "else "
+                + "id=$(sed -n 's:.*<artifactId>\\([^<]*\\)</artifactId>.*:\\1:p' pom.xml | head -n1); "
+                + "if [ -z \"$id\" ]; then id=$(basename \"$PWD\"); fi; "
+                + "port=$(grep -RhoE 'server\\.port\\s*[:=]\\s*[0-9]+' src/main/resources 2>/dev/null | head -n1 | sed -E 's/.*[:=]\\s*([0-9]+).*/\\1/'); "
+                + "status=stopped; pid=''; "
+                + "if [ -n \"$port\" ]; then pid=$(lsof -tiTCP:\"$port\" -sTCP:LISTEN 2>/dev/null | head -n1 || true); fi; "
+                + "if [ -z \"$pid\" ]; then pid=$(pgrep -f \"$PWD\" | head -n1 || true); fi; "
+                + "if [ -n \"$pid\" ]; then status=running; fi; "
+                + "echo \"$id|$port|$status|$pid\"; "
+                + "fi";
         Map<String, Object> exec = runProjectCapture(project, cmd);
         return parsePipeModuleRows(str(exec.get("output")), rootDir, "mvn");
     }
@@ -2293,6 +2603,12 @@ public class MsaController {
         String composeFile = firstNonEmpty(str(project.get("dockerComposeFile")), "docker-compose.yml");
         String cmd = "set -e; cd " + shellQuote(rootDir) + "; "
                 + "services=$(docker compose -f " + shellQuote(composeFile) + " config --services 2>/dev/null || true); "
+                + "if [ -z \"$services\" ]; then "
+                + "services=$(docker compose -f " + shellQuote(composeFile) + " ps -a --services 2>/dev/null || true); "
+                + "fi; "
+                + "if [ -z \"$services\" ]; then "
+                + "services=$(docker compose -f " + shellQuote(composeFile) + " ps --services 2>/dev/null || true); "
+                + "fi; "
                 + "running=$(docker compose -f " + shellQuote(composeFile) + " ps --status running --services 2>/dev/null || true); "
                 + "for id in $services; do "
                 + "port=$(grep -RhoE 'server\\.port\\s*[:=]\\s*[0-9]+' \"module/$id/src/main/resources\" 2>/dev/null | head -n1 | sed -E 's/.*[:=]\\s*([0-9]+).*/\\1/'); "
@@ -2331,7 +2647,12 @@ public class MsaController {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", id);
             row.put("name", id);
-            row.put("dir", rootDir + "/module/" + id);
+            String moduleDir = rootDir + "/module/" + id;
+            if (!Files.isDirectory(Paths.get(moduleDir))) {
+                String rootChild = rootDir + "/" + id;
+                moduleDir = Files.isDirectory(Paths.get(rootChild)) ? rootChild : rootDir;
+            }
+            row.put("dir", moduleDir);
             row.put("port", port);
             row.put("javaRunnable", true);
             row.put("status", status);
@@ -2343,21 +2664,25 @@ public class MsaController {
     }
 
     private Map<String, Object> runProjectManagerModuleAction(Map<String, Object> project, String moduleId, String action) throws Exception {
-        if (isLocalProject(project)) {
-            return runLocalManagerModuleAction(moduleId, action);
-        }
-        String managerUrl = firstNonEmpty(str(project.get("managerUrl")), "http://localhost:18030");
+        String managerUrl = resolveProjectManagerUrl(project);
         String rootDir = firstNonEmpty(str(project.get("rootDir")), APP_ROOT);
         String cmd = "cd " + shellQuote(rootDir) + " && "
                 + "curl -sS -X POST " + shellQuote(managerUrl + "/admin/msa/api/modules/" + moduleId + "/" + action);
-        Map<String, Object> exec = runProjectCapture(project, cmd);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("status", "ok");
-        out.put("runMode", "manager");
-        out.put("message", "원격 관리자 API 실행 완료");
-        out.put("output", str(exec.get("output")));
-        out.put("exitCode", exec.get("exitCode"));
-        return out;
+        try {
+            Map<String, Object> exec = runProjectCapture(project, cmd);
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("status", "ok");
+            out.put("runMode", "manager");
+            out.put("message", "원격 관리자 API 실행 완료");
+            out.put("output", str(exec.get("output")));
+            out.put("exitCode", exec.get("exitCode"));
+            return out;
+        } catch (Exception e) {
+            if (isLocalProject(project)) {
+                return runProjectMvnModuleAction(project, moduleId, action);
+            }
+            throw e;
+        }
     }
 
     private Map<String, Object> runLocalManagerModuleAction(String moduleId, String action) {
@@ -2414,7 +2739,7 @@ public class MsaController {
 
     private Map<String, Object> runProjectMvnModuleAction(Map<String, Object> project, String moduleId, String action) throws Exception {
         String rootDir = firstNonEmpty(str(project.get("rootDir")), APP_ROOT);
-        String moduleDir = rootDir + "/module/" + moduleId;
+        String moduleDir = resolveMvnModuleDir(rootDir, moduleId);
         String logDir = rootDir + "/logs";
         String pidFile = logDir + "/msa-" + moduleId + ".pid";
         String dbHost = isLocalProject(project)
@@ -2460,12 +2785,40 @@ public class MsaController {
         return out;
     }
 
-    private List<Map<String, Object>> parseDiscoveredMappings(String raw) {
+    private String resolveMvnModuleDir(String rootDir, String moduleId) {
+        String byModuleFolder = rootDir + "/module/" + moduleId;
+        if (Files.isDirectory(Paths.get(byModuleFolder))) {
+            return byModuleFolder;
+        }
+        String byRootChild = rootDir + "/" + moduleId;
+        if (Files.isDirectory(Paths.get(byRootChild))) {
+            return byRootChild;
+        }
+        if (Files.exists(Paths.get(rootDir, "pom.xml")) && Files.isDirectory(Paths.get(rootDir, "src"))) {
+            return rootDir;
+        }
+        return byModuleFolder;
+    }
+
+    private List<Map<String, Object>> parseDiscoveredMappings(String raw, String rootDir) {
         List<Map<String, Object>> out = new ArrayList<>();
         if (raw == null || raw.trim().isEmpty()) {
             return out;
         }
-        Pattern q = Pattern.compile("\"([^\"]+)\"");
+        String fallbackModule = "project";
+        try {
+            Path rp = Paths.get(firstNonEmpty(rootDir, APP_ROOT));
+            if (rp.getFileName() != null) {
+                fallbackModule = rp.getFileName().toString();
+            }
+        } catch (Exception ignored) {
+        }
+        Map<String, List<String>> fileLinesCache = new HashMap<>();
+        Map<String, String> controllerTypeCache = new HashMap<>();
+        Map<String, List<String>> classPathCache = new HashMap<>();
+        Map<String, Object> schemaCache = new HashMap<>();
+        Map<String, Path> typeIndex = buildJavaTypeIndex(rootDir);
+        Pattern callPattern = Pattern.compile("([A-Za-z_][A-Za-z0-9_]*)\\.([A-Za-z_][A-Za-z0-9_]*)\\s*\\(");
         for (String line : raw.split("\\r?\\n")) {
             if (line == null || line.trim().isEmpty()) {
                 continue;
@@ -2475,7 +2828,13 @@ public class MsaController {
                 continue;
             }
             String filePath = parts[0].trim();
+            String lineText = parts[1].trim();
             String annotation = parts[2].trim();
+            int lineNo = 0;
+            try {
+                lineNo = Integer.parseInt(lineText);
+            } catch (Exception ignored) {
+            }
             String module = "";
             String[] pathParts = filePath.replace("\\", "/").split("/");
             for (int i = 0; i < pathParts.length - 1; i++) {
@@ -2485,32 +2844,612 @@ public class MsaController {
                 }
             }
             if (module.isEmpty()) {
+                module = fallbackModule;
+            }
+            Path abs = Paths.get(rootDir, filePath).normalize();
+            String cacheKey = abs.toString();
+            List<String> lines = fileLinesCache.computeIfAbsent(cacheKey, k -> readAllLinesSafe(abs));
+            if (lines.isEmpty()) {
                 continue;
             }
-            String method = "GET";
-            if (annotation.contains("@PostMapping")) method = "POST";
-            else if (annotation.contains("@PutMapping")) method = "PUT";
-            else if (annotation.contains("@DeleteMapping")) method = "DELETE";
-            else if (annotation.contains("@RequestMapping")) method = "GET/POST";
-
-            String path = "/";
-            Matcher m = q.matcher(annotation);
-            if (m.find()) {
-                path = m.group(1);
-                if (!path.startsWith("/")) {
-                    path = "/" + path;
-                }
+            boolean classLevel = isClassLevelMappingLine(lines, lineNo);
+            List<String> classPaths = classPathCache.computeIfAbsent(cacheKey, k -> collectClassLevelPaths(lines));
+            if (classLevel) {
+                continue;
             }
-
+            String controllerType = controllerTypeCache.computeIfAbsent(cacheKey, k -> detectControllerType(lines));
+            MethodSpec spec = resolveMethodSpec(lines, lineNo, callPattern, abs, typeIndex, schemaCache);
+            String method = resolveHttpMethod(annotation);
+            String rawPath = firstNonEmpty(extractFirstPath(annotation), "/");
+            String fullPath = combinePaths(classPaths.isEmpty() ? "/" : classPaths.get(0), rawPath);
+            String controllerName = abs.getFileName() == null ? "Controller" : abs.getFileName().toString().replace(".java", "");
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("module", module);
-            row.put("path", path);
+            row.put("path", fullPath);
             row.put("method", method);
-            row.put("description", "source-scan");
+            row.put("description", controllerName + (spec.methodName.isEmpty() ? "" : ("#" + spec.methodName)));
             row.put("sourceFile", filePath);
+            row.put("sourceLine", lineNo);
+            row.put("controller", controllerName);
+            row.put("controllerType", controllerType);
+            row.put("handlerMethod", spec.methodName);
+            row.put("params", spec.params);
+            row.put("requestBody", spec.requestBody);
+            row.put("response", spec.response);
+            row.put("uiElements", spec.uiElements);
             out.add(row);
         }
         return out;
+    }
+
+    private static class MethodSpec {
+        String methodName = "";
+        List<Map<String, Object>> params = new ArrayList<>();
+        List<Map<String, Object>> requestBody = new ArrayList<>();
+        List<Map<String, Object>> response = new ArrayList<>();
+        List<Map<String, Object>> uiElements = new ArrayList<>();
+    }
+
+    private List<String> readAllLinesSafe(Path p) {
+        try {
+            if (!Files.exists(p)) {
+                return new ArrayList<>();
+            }
+            return Files.readAllLines(p, StandardCharsets.UTF_8);
+        } catch (Exception ignored) {
+            return new ArrayList<>();
+        }
+    }
+
+    private boolean isClassLevelMappingLine(List<String> lines, int lineNo) {
+        int start = Math.max(0, lineNo);
+        int end = Math.min(lines.size(), start + 8);
+        for (int i = start; i < end; i++) {
+            String s = str(lines.get(i)).trim();
+            if (s.isEmpty() || s.startsWith("@")) {
+                continue;
+            }
+            return s.contains(" class ");
+        }
+        return false;
+    }
+
+    private List<String> collectClassLevelPaths(List<String> lines) {
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < lines.size(); i++) {
+            String s = str(lines.get(i)).trim();
+            if (s.startsWith("@RequestMapping(") || s.startsWith("@RequestMapping (")) {
+                if (isClassLevelMappingLine(lines, i + 1)) {
+                    String p = firstNonEmpty(extractFirstPath(s), "/");
+                    out.add(p);
+                }
+            }
+        }
+        if (out.isEmpty()) out.add("/");
+        return out;
+    }
+
+    private String detectControllerType(List<String> lines) {
+        for (String l : lines) {
+            String s = str(l);
+            if (s.contains("@RestController")) return "REST";
+        }
+        for (String l : lines) {
+            String s = str(l);
+            if (s.contains("@Controller")) return "MVC";
+        }
+        return "Controller";
+    }
+
+    private String resolveHttpMethod(String annotation) {
+        if (annotation.contains("@PostMapping")) return "POST";
+        if (annotation.contains("@PutMapping")) return "PUT";
+        if (annotation.contains("@DeleteMapping")) return "DELETE";
+        if (annotation.contains("@PatchMapping")) return "PATCH";
+        return "GET/POST";
+    }
+
+    private String extractFirstPath(String annotation) {
+        Matcher m = Pattern.compile("\"([^\"]+)\"").matcher(str(annotation));
+        if (m.find()) {
+            String p = m.group(1);
+            return p.startsWith("/") ? p : "/" + p;
+        }
+        return "/";
+    }
+
+    private String combinePaths(String base, String child) {
+        String b = firstNonEmpty(base, "/").trim();
+        String c = firstNonEmpty(child, "/").trim();
+        if (!b.startsWith("/")) b = "/" + b;
+        if (!c.startsWith("/")) c = "/" + c;
+        if ("/".equals(b)) return c;
+        if ("/".equals(c)) return b;
+        if (b.endsWith("/")) b = b.substring(0, b.length() - 1);
+        return b + c;
+    }
+
+    private boolean isAllowedTargetUrl(String targetUrl) {
+        try {
+            URI u = URI.create(targetUrl);
+            String scheme = firstNonEmpty(u.getScheme(), "").toLowerCase(Locale.ROOT);
+            String host = firstNonEmpty(u.getHost(), "").toLowerCase(Locale.ROOT);
+            if (!("http".equals(scheme) || "https".equals(scheme))) return false;
+            return "localhost".equals(host) || "127.0.0.1".equals(host);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private MethodSpec resolveMethodSpec(List<String> lines, int lineNo, Pattern callPattern,
+            Path sourceFile, Map<String, Path> typeIndex, Map<String, Object> schemaCache) {
+        MethodSpec out = new MethodSpec();
+        int idx = Math.max(0, lineNo);
+        int sigLine = -1;
+        MethodSignature signature = null;
+        for (int i = idx; i < Math.min(lines.size(), idx + 20); i++) {
+            StringBuilder sb = new StringBuilder();
+            int sigEnd = Math.min(lines.size(), i + 8);
+            for (int j = i; j < sigEnd; j++) {
+                String seg = str(lines.get(j)).trim();
+                if (seg.isEmpty()) continue;
+                sb.append(seg).append(' ');
+                if (seg.contains("{") || seg.endsWith(";")) break;
+            }
+            MethodSignature parsed = parseMethodSignature(sb.toString());
+            if (parsed != null) {
+                sigLine = i;
+                signature = parsed;
+                break;
+            }
+        }
+        if (sigLine < 0 || signature == null) {
+            return out;
+        }
+        String returnType = str(signature.returnType).trim();
+        String methodName = str(signature.methodName).trim();
+        String paramText = str(signature.paramText).trim();
+        out.methodName = methodName;
+        if (!paramText.isEmpty()) {
+            List<String> chunks = splitTopLevelParams(paramText);
+            int seq = 1;
+            for (String p : chunks) {
+                Map<String, Object> pr = parseParameterSpec(p, seq++);
+                String type = str(pr.get("type"));
+                pr.put("schema", resolveTypeSchema(type, sourceFile, typeIndex, schemaCache, 0, new LinkedHashSet<>()));
+                String in = str(pr.get("in"));
+                if ("body".equals(in)) {
+                    Object bodySchema = pr.get("schema");
+                    List<Map<String, Object>> expanded = expandObjectSchemaRows(bodySchema);
+                    if (!expanded.isEmpty()) {
+                        out.requestBody.addAll(expanded);
+                    } else {
+                        out.requestBody.add(pr);
+                    }
+                } else {
+                    out.params.add(pr);
+                }
+            }
+        }
+        Object responseSchema = resolveTypeSchema(returnType, sourceFile, typeIndex, schemaCache, 0, new LinkedHashSet<>());
+        List<Map<String, Object>> responseRows = expandObjectSchemaRows(responseSchema);
+        if (!responseRows.isEmpty()) {
+            out.response.addAll(responseRows);
+        } else {
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("name", "return");
+            resp.put("type", returnType);
+            resp.put("description", "controller return type");
+            resp.put("schema", responseSchema);
+            out.response.add(resp);
+        }
+
+        int brace = 0;
+        boolean opened = false;
+        List<String> calls = new ArrayList<>();
+        for (int i = sigLine; i < Math.min(lines.size(), sigLine + 120); i++) {
+            String s = str(lines.get(i));
+            for (char ch : s.toCharArray()) {
+                if (ch == '{') {
+                    brace++;
+                    opened = true;
+                } else if (ch == '}') {
+                    brace--;
+                }
+            }
+            Matcher cm = callPattern.matcher(s);
+            while (cm.find()) {
+                String c = cm.group(1) + "." + cm.group(2);
+                if (!calls.contains(c)) calls.add(c);
+                if (calls.size() >= 12) break;
+            }
+            if (opened && brace <= 0) break;
+        }
+        Map<String, Object> ui = new LinkedHashMap<>();
+        ui.put("element", "Controller Method");
+        ui.put("function", methodName);
+        ui.put("details", "handler");
+        ui.put("inputs", out.params.stream().map(p -> str(p.get("name")) + ":" + str(p.get("type"))).collect(Collectors.toList()));
+        ui.put("calls", calls);
+        ui.put("url", "");
+        out.uiElements.add(ui);
+        return out;
+    }
+
+    private static class MethodSignature {
+        String returnType;
+        String methodName;
+        String paramText;
+    }
+
+    private MethodSignature parseMethodSignature(String line) {
+        String s = str(line).trim();
+        if (s.isEmpty() || s.startsWith("@")) return null;
+        int accessIdx = -1;
+        for (String k : Arrays.asList("public ", "protected ", "private ")) {
+            int i = s.indexOf(k);
+            if (i >= 0 && (accessIdx < 0 || i < accessIdx)) accessIdx = i;
+        }
+        if (accessIdx < 0) return null;
+        String body = s.substring(accessIdx).trim();
+        int pStart = body.indexOf('(');
+        if (pStart < 0) return null;
+        int pEnd = findMatchingParen(body, pStart);
+        if (pEnd < 0) return null;
+        String header = body.substring(0, pStart).trim();
+        Matcher hm = Pattern.compile("^(?:public|protected|private)\\s+(.+)\\s+([A-Za-z_$][A-Za-z0-9_$]*)$").matcher(header);
+        if (!hm.find()) return null;
+        MethodSignature out = new MethodSignature();
+        out.returnType = hm.group(1).trim();
+        out.methodName = hm.group(2).trim();
+        out.paramText = body.substring(pStart + 1, pEnd).trim();
+        return out;
+    }
+
+    private int findMatchingParen(String s, int openIdx) {
+        if (openIdx < 0 || openIdx >= s.length() || s.charAt(openIdx) != '(') return -1;
+        int depth = 0;
+        boolean inQuote = false;
+        char quote = 0;
+        for (int i = openIdx; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (inQuote) {
+                if (ch == quote && (i == 0 || s.charAt(i - 1) != '\\')) inQuote = false;
+                continue;
+            }
+            if (ch == '"' || ch == '\'') {
+                inQuote = true;
+                quote = ch;
+                continue;
+            }
+            if (ch == '(') depth++;
+            if (ch == ')') {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+        return -1;
+    }
+
+    private List<String> splitTopLevelParams(String raw) {
+        List<String> out = new ArrayList<>();
+        String s = str(raw);
+        if (s.isEmpty()) return out;
+        StringBuilder cur = new StringBuilder();
+        int round = 0;
+        int angle = 0;
+        int square = 0;
+        int curly = 0;
+        boolean inQuote = false;
+        char quoteChar = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (inQuote) {
+                cur.append(ch);
+                if (ch == quoteChar && (i == 0 || s.charAt(i - 1) != '\\')) {
+                    inQuote = false;
+                }
+                continue;
+            }
+            if (ch == '"' || ch == '\'') {
+                inQuote = true;
+                quoteChar = ch;
+                cur.append(ch);
+                continue;
+            }
+            if (ch == '(') round++;
+            if (ch == ')') round = Math.max(0, round - 1);
+            if (ch == '<') angle++;
+            if (ch == '>') angle = Math.max(0, angle - 1);
+            if (ch == '[') square++;
+            if (ch == ']') square = Math.max(0, square - 1);
+            if (ch == '{') curly++;
+            if (ch == '}') curly = Math.max(0, curly - 1);
+            if (ch == ',' && round == 0 && angle == 0 && square == 0 && curly == 0) {
+                String token = cur.toString().trim();
+                if (!token.isEmpty()) out.add(token);
+                cur.setLength(0);
+                continue;
+            }
+            cur.append(ch);
+        }
+        String tail = cur.toString().trim();
+        if (!tail.isEmpty()) out.add(tail);
+        return out;
+    }
+
+    private Map<String, Object> parseParameterSpec(String rawParam, int seq) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        String p = str(rawParam).trim().replaceAll("\\s+", " ");
+        boolean required = false;
+        String explicitName = "";
+        String inType = "query";
+        if (p.contains("@RequestBody")) inType = "body";
+        else if (p.contains("@PathVariable")) inType = "path";
+        else if (p.contains("@RequestHeader")) inType = "header";
+        else if (p.contains("@RequestParam")) inType = "query";
+        Matcher reqM = Pattern.compile("required\\s*=\\s*(true|false)").matcher(p);
+        if (reqM.find()) {
+            required = "true".equalsIgnoreCase(reqM.group(1));
+        }
+        Matcher annNameM = Pattern.compile("(?:value|name)\\s*=\\s*\"([^\"]+)\"").matcher(p);
+        if (annNameM.find()) {
+            explicitName = annNameM.group(1);
+        } else {
+            Matcher shortcutM = Pattern.compile("@(?:RequestParam|PathVariable|RequestHeader)\\s*\\(\\s*\"([^\"]+)\"").matcher(p);
+            if (shortcutM.find()) {
+                explicitName = shortcutM.group(1);
+            }
+        }
+        String stripped = p.replaceAll("^final\\s+", "").trim();
+        stripped = stripLeadingAnnotations(stripped);
+        stripped = stripped.replaceAll("\\bfinal\\s+", "").trim();
+        if (stripped.isEmpty()) {
+            out.put("name", explicitName.isEmpty() ? ("arg" + seq) : explicitName);
+            out.put("type", "Object");
+            out.put("required", required);
+            out.put("in", inType);
+            out.put("description", "method-arg");
+            return out;
+        }
+        Matcher m = Pattern.compile("(.+)\\s+([A-Za-z_$][A-Za-z0-9_$]*)$").matcher(stripped);
+        String type;
+        String name;
+        if (m.find()) {
+            type = m.group(1).trim().replace("...", "[]");
+            name = m.group(2).trim();
+        } else {
+            type = stripped.replace("...", "[]");
+            name = "arg" + seq;
+        }
+        if (!explicitName.isEmpty()) {
+            name = explicitName;
+        }
+        out.put("name", name);
+        out.put("type", type);
+        out.put("required", required);
+        out.put("in", inType);
+        out.put("description", "method-arg");
+        return out;
+    }
+
+    private String stripLeadingAnnotations(String raw) {
+        String s = str(raw).trim();
+        while (s.startsWith("@")) {
+            int i = 1;
+            while (i < s.length()) {
+                char ch = s.charAt(i);
+                if (Character.isLetterOrDigit(ch) || ch == '_' || ch == '$' || ch == '.') {
+                    i++;
+                    continue;
+                }
+                break;
+            }
+            s = s.substring(Math.min(i, s.length())).trim();
+            if (s.startsWith("(")) {
+                int depth = 0;
+                boolean inQuote = false;
+                char quote = 0;
+                int j = 0;
+                for (; j < s.length(); j++) {
+                    char ch = s.charAt(j);
+                    if (inQuote) {
+                        if (ch == quote && (j == 0 || s.charAt(j - 1) != '\\')) inQuote = false;
+                        continue;
+                    }
+                    if (ch == '"' || ch == '\'') {
+                        inQuote = true;
+                        quote = ch;
+                        continue;
+                    }
+                    if (ch == '(') depth++;
+                    if (ch == ')') {
+                        depth--;
+                        if (depth <= 0) {
+                            j++;
+                            break;
+                        }
+                    }
+                }
+                s = s.substring(Math.min(j, s.length())).trim();
+            }
+        }
+        return s;
+    }
+
+    private Map<String, Path> buildJavaTypeIndex(String rootDir) {
+        Map<String, Path> out = new HashMap<>();
+        try {
+            Path root = Paths.get(firstNonEmpty(rootDir, APP_ROOT));
+            if (!Files.exists(root)) return out;
+            Files.walk(root, 8).forEach(p -> {
+                try {
+                    if (!Files.isRegularFile(p) || !p.toString().endsWith(".java")) return;
+                    String name = p.getFileName() == null ? "" : p.getFileName().toString();
+                    if (!name.endsWith(".java")) return;
+                    String simple = name.substring(0, name.length() - 5);
+                    if (!simple.isEmpty() && !out.containsKey(simple)) {
+                        out.put(simple, p);
+                    }
+                } catch (Exception ignored) {
+                }
+            });
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    private Object resolveTypeSchema(String rawType, Path sourceFile, Map<String, Path> typeIndex,
+            Map<String, Object> schemaCache, int depth, Set<String> visiting) {
+        String t = normalizeTypeName(rawType);
+        if (t.isEmpty()) return "object";
+        if (isPrimitiveLike(t)) return t;
+        if (depth > 2) return t;
+        if (t.startsWith("List<") || t.startsWith("Set<")) {
+            String inner = t.substring(t.indexOf('<') + 1, t.lastIndexOf('>'));
+            Map<String, Object> arr = new LinkedHashMap<>();
+            arr.put("type", "array");
+            arr.put("items", resolveTypeSchema(inner, sourceFile, typeIndex, schemaCache, depth + 1, visiting));
+            return arr;
+        }
+        if (t.startsWith("Map<")) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("type", "object");
+            List<String> pair = splitGenericPair(t.substring(t.indexOf('<') + 1, t.lastIndexOf('>')));
+            Object valueSchema = true;
+            if (pair.size() >= 2) {
+                valueSchema = resolveTypeSchema(pair.get(1), sourceFile, typeIndex, schemaCache, depth + 1, visiting);
+            }
+            m.put("additionalProperties", valueSchema);
+            return m;
+        }
+        if (t.startsWith("ResponseEntity<") || t.startsWith("Optional<") || t.startsWith("Page<") || t.startsWith("Slice<")) {
+            String inner = t.substring(t.indexOf('<') + 1, t.lastIndexOf('>'));
+            return resolveTypeSchema(inner, sourceFile, typeIndex, schemaCache, depth + 1, visiting);
+        }
+        if (schemaCache.containsKey(t)) return schemaCache.get(t);
+        if (visiting.contains(t)) return t;
+        visiting.add(t);
+        Path cls = typeIndex.get(t);
+        if (cls == null) {
+            visiting.remove(t);
+            return t;
+        }
+        List<Map<String, Object>> fields = new ArrayList<>();
+        Pattern fp = Pattern.compile("^(?:private|protected|public)\\s+([A-Za-z0-9_<>\\[\\].?]+)\\s+([A-Za-z0-9_]+)\\s*(?:=|;).*");
+        try {
+            for (String line : Files.readAllLines(cls, StandardCharsets.UTF_8)) {
+                String s = str(line).trim();
+                if (s.startsWith("//") || s.startsWith("*") || s.startsWith("@")) continue;
+                if (s.contains(" static ")) continue;
+                Matcher m = fp.matcher(s);
+                if (!m.find()) continue;
+                String ft = m.group(1).trim();
+                String fn = m.group(2).trim();
+                Map<String, Object> f = new LinkedHashMap<>();
+                f.put("name", fn);
+                f.put("type", ft);
+                f.put("schema", resolveTypeSchema(ft, cls, typeIndex, schemaCache, depth + 1, visiting));
+                fields.add(f);
+            }
+        } catch (Exception ignored) {
+        }
+        Map<String, Object> obj = new LinkedHashMap<>();
+        obj.put("type", "object");
+        obj.put("class", t);
+        obj.put("fields", fields);
+        schemaCache.put(t, obj);
+        visiting.remove(t);
+        return obj;
+    }
+
+    private String normalizeTypeName(String rawType) {
+        String t = str(rawType).trim();
+        if (t.isEmpty()) return "";
+        t = stripLeadingAnnotations(t);
+        t = t.replace("final ", "").trim();
+        t = t.replaceAll("\\s+", "");
+        return stripPackageNamesInType(t);
+    }
+
+    private boolean isPrimitiveLike(String t) {
+        String v = str(t);
+        return Arrays.asList("void", "String", "Integer", "Long", "Boolean", "Double", "Float", "Short", "Byte",
+                "int", "long", "boolean", "double", "float", "short", "byte", "Object", "Model", "HttpServletRequest",
+                "HttpServletResponse", "HttpSession", "BindingResult", "ModelMap")
+                .contains(v)
+                || v.startsWith("LocalDate") || v.startsWith("Date") || v.startsWith("Timestamp");
+    }
+
+    private List<Map<String, Object>> expandObjectSchemaRows(Object schema) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (!(schema instanceof Map)) {
+            return out;
+        }
+        Object fieldsObj = ((Map<?, ?>) schema).get("fields");
+        if (!(fieldsObj instanceof List)) {
+            return out;
+        }
+        for (Object item : (List<?>) fieldsObj) {
+            if (!(item instanceof Map)) continue;
+            Map<?, ?> f = (Map<?, ?>) item;
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("name", str(f.get("name")));
+            row.put("type", str(f.get("type")));
+            row.put("description", "field");
+            row.put("schema", f.get("schema"));
+            out.add(row);
+        }
+        return out;
+    }
+
+    private List<String> splitGenericPair(String raw) {
+        List<String> out = new ArrayList<>();
+        String s = str(raw);
+        StringBuilder cur = new StringBuilder();
+        int depth = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch == '<') depth++;
+            if (ch == '>') depth = Math.max(0, depth - 1);
+            if (ch == ',' && depth == 0) {
+                out.add(cur.toString().trim());
+                cur.setLength(0);
+                continue;
+            }
+            cur.append(ch);
+        }
+        if (cur.length() > 0) out.add(cur.toString().trim());
+        return out;
+    }
+
+    private String stripPackageNamesInType(String raw) {
+        String s = str(raw);
+        StringBuilder out = new StringBuilder();
+        StringBuilder token = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (Character.isLetterOrDigit(ch) || ch == '_' || ch == '$' || ch == '.') {
+                token.append(ch);
+                continue;
+            }
+            if (token.length() > 0) {
+                out.append(trimPackageToken(token.toString()));
+                token.setLength(0);
+            }
+            out.append(ch);
+        }
+        if (token.length() > 0) {
+            out.append(trimPackageToken(token.toString()));
+        }
+        return out.toString();
+    }
+
+    private String trimPackageToken(String token) {
+        if (token == null || token.isBlank()) return "";
+        if (!token.contains(".")) return token;
+        String[] parts = token.split("\\.");
+        return parts[parts.length - 1];
     }
 
     private Map<String, Object> sanitizeProjectOutput(Map<String, Object> p) {

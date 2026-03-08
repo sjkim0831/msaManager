@@ -4,6 +4,9 @@ import lombok.Builder;
 import lombok.Data;
 import org.yaml.snakeyaml.Yaml;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.ArrayList;
@@ -11,15 +14,17 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MsaScanner {
     private static final String ROOT_PATH = AppPaths.root();
     private static final String MODULE_ROOT = AppPaths.moduleRoot();
-    private static final String MODULE_ROOT_FALLBACK = AppPaths.moduleRoot();
     private static final List<String> PORT_REGISTRY_CANDIDATES = List.of(
             AppPaths.resolvePath("msa-ports.yml").toString());
     private static final List<String> MAPPING_FILE_CANDIDATES = List.of(
             AppPaths.resolvePath("msa-mappings.yml").toString());
+    private static final Pattern ARTIFACT_ID_PATTERN = Pattern.compile("<artifactId>\\s*([^<\\s]+)\\s*</artifactId>");
     @Data
     @Builder
     public static class ModuleInfo {
@@ -42,23 +47,31 @@ public class MsaScanner {
                 moduleIds.add(fromMapping);
             }
         }
+        for (String fromDir : discoverModuleIdsFromDirectory()) {
+            if (!moduleIds.contains(fromDir)) {
+                moduleIds.add(fromDir);
+            }
+        }
 
         for (String id : moduleIds) {
             Integer port = registry.get(id);
 
             File moduleDir = new File(MODULE_ROOT, id);
-            File moduleDirFallback = new File(MODULE_ROOT_FALLBACK, id);
+            File rootDir = new File(ROOT_PATH);
+            File rootChildDir = new File(ROOT_PATH, id);
+            boolean rootAsModule = shouldUseRootAsModuleDir(id);
             String dirPath = moduleDir.exists()
                     ? moduleDir.getAbsolutePath()
-                    : (moduleDirFallback.exists()
-                            ? moduleDirFallback.getAbsolutePath()
-                            : new File(ROOT_PATH, id).getAbsolutePath());
+                    : (rootChildDir.exists()
+                            ? rootChildDir.getAbsolutePath()
+                            : (rootAsModule ? rootDir.getAbsolutePath() : rootChildDir.getAbsolutePath()));
+            File resolvedDir = new File(dirPath);
             boolean hasJarInModule = new File(moduleDir, "target/" + id + ".jar").exists()
-                    || new File(moduleDirFallback, "target/" + id + ".jar").exists();
+                    || new File(resolvedDir, "target/" + id + ".jar").exists();
             boolean hasJarInApp = new File(ROOT_PATH, id + ".jar").exists()
                     || new File(ROOT_PATH, id + "/target/" + id + ".jar").exists();
             boolean hasPom = new File(moduleDir, "pom.xml").exists()
-                    || new File(moduleDirFallback, "pom.xml").exists();
+                    || new File(resolvedDir, "pom.xml").exists();
             // In local mvn mode, module can be runnable even when target jar has not been built yet.
             boolean javaRunnable = hasJarInModule || hasJarInApp || hasPom;
 
@@ -133,6 +146,69 @@ public class MsaScanner {
             }
         }
         return new File(candidates.get(0));
+    }
+
+    private List<String> discoverModuleIdsFromDirectory() {
+        List<String> ids = new ArrayList<>();
+        File moduleRoot = new File(MODULE_ROOT);
+        File[] children = moduleRoot.listFiles(File::isDirectory);
+        if (children != null) {
+            for (File dir : children) {
+                if (dir == null) {
+                    continue;
+                }
+                String name = dir.getName();
+                if (name == null || name.trim().isEmpty()) {
+                    continue;
+                }
+                if (name.startsWith(".")) {
+                    continue;
+                }
+                ids.add(name.trim());
+            }
+        }
+        if (ids.isEmpty()) {
+            String rootModuleId = detectRootModuleId();
+            if (!rootModuleId.isEmpty()) {
+                ids.add(rootModuleId);
+            }
+        }
+        return ids;
+    }
+
+    private boolean shouldUseRootAsModuleDir(String moduleId) {
+        String id = moduleId == null ? "" : moduleId.trim();
+        if (id.isEmpty()) {
+            return false;
+        }
+        File moduleDir = new File(MODULE_ROOT, id);
+        if (moduleDir.isDirectory()) {
+            return false;
+        }
+        String rootModuleId = detectRootModuleId();
+        return id.equals(rootModuleId);
+    }
+
+    private String detectRootModuleId() {
+        try {
+            Path root = Path.of(ROOT_PATH);
+            Path pom = root.resolve("pom.xml");
+            if (!Files.exists(pom) || !Files.isDirectory(root.resolve("src"))) {
+                return "";
+            }
+            String xml = Files.readString(pom, StandardCharsets.UTF_8);
+            Matcher m = ARTIFACT_ID_PATTERN.matcher(xml);
+            while (m.find()) {
+                String artifact = m.group(1) == null ? "" : m.group(1).trim();
+                if (!artifact.isEmpty() && !"parent".equalsIgnoreCase(artifact)) {
+                    return artifact;
+                }
+            }
+            Path fileName = root.getFileName();
+            return fileName == null ? "" : fileName.toString();
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
 }

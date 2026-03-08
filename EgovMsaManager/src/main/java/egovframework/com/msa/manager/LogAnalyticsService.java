@@ -57,7 +57,9 @@ public class LogAnalyticsService {
     private final Map<String, Integer> controllerHits = new ConcurrentHashMap<>();
     private final Map<String, Integer> errorHotspots = new ConcurrentHashMap<>();
 
-    private static final Pattern HTTP_PATH = Pattern.compile("\\b(GET|POST|PUT|DELETE|PATCH)\\s+\"([^\"]+)\"");
+    private static final Pattern HTTP_PATH_QUOTED = Pattern.compile("\\b(GET|POST|PUT|DELETE|PATCH)\\s+\"([^\"]+)\"");
+    private static final Pattern HTTP_PATH_PLAIN = Pattern.compile("\\b(GET|POST|PUT|DELETE|PATCH)\\s+(/[^\\s\"']+)");
+    private static final Pattern SERVLET_SERVICE = Pattern.compile("Servlet\\.service\\(\\).*servlet \\[([^\\]]+)\\]");
     private static final Pattern LOGGER_SOURCE = Pattern.compile("\\s([a-zA-Z0-9_.$]+)\\s*:\\s");
     private static final Pattern LOG_TIME = Pattern.compile("^(\\d{4}-\\d{2}-\\d{2})[ T](\\d{2}:\\d{2}:\\d{2})(?:[.,]\\d{3})?");
     private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -142,8 +144,16 @@ public class LogAnalyticsService {
     }
 
     public List<Map<String, Object>> getTopControllers(LocalDateTime from, LocalDateTime to) {
+        try {
+            scanOnce();
+        } catch (Exception ignored) {
+        }
         if (from == null && to == null) {
-            return toControllerRows(controllerHits);
+            List<Map<String, Object>> live = toControllerRows(controllerHits);
+            if (!live.isEmpty()) {
+                return live;
+            }
+            return getArchiveTopControllers(null, null);
         }
         Map<String, Integer> filtered = new HashMap<>();
         for (Deque<Map<String, Object>> q : logsByModule.values()) {
@@ -156,6 +166,9 @@ public class LogAnalyticsService {
                 }
             }
         }
+        if (filtered.isEmpty()) {
+            return getArchiveTopControllers(from, to);
+        }
         return toControllerRows(filtered);
     }
 
@@ -164,8 +177,16 @@ public class LogAnalyticsService {
     }
 
     public List<Map<String, Object>> getTopErrors(LocalDateTime from, LocalDateTime to) {
+        try {
+            scanOnce();
+        } catch (Exception ignored) {
+        }
         if (from == null && to == null) {
-            return toErrorRows(errorHotspots);
+            List<Map<String, Object>> live = toErrorRows(errorHotspots);
+            if (!live.isEmpty()) {
+                return live;
+            }
+            return getArchiveTopErrors(null, null);
         }
         Map<String, Integer> filtered = new HashMap<>();
         for (Deque<Map<String, Object>> q : logsByModule.values()) {
@@ -177,6 +198,9 @@ public class LogAnalyticsService {
                     mergeErrorHotspot(String.valueOf(event.get("message")), filtered);
                 }
             }
+        }
+        if (filtered.isEmpty()) {
+            return getArchiveTopErrors(from, to);
         }
         return toErrorRows(filtered);
     }
@@ -246,7 +270,7 @@ public class LogAnalyticsService {
     private synchronized void scanOnce() {
         List<MsaScanner.ModuleInfo> modules = scanner.scan();
         for (MsaScanner.ModuleInfo mod : modules) {
-            Path logPath = Paths.get(mod.getDir(), "startup.log");
+            Path logPath = resolveModuleLogPath(mod);
             if (!Files.exists(logPath)) {
                 continue;
             }
@@ -315,14 +339,100 @@ public class LogAnalyticsService {
     }
 
     private void mergeControllerHit(String line, Map<String, Integer> target) {
-        Matcher m = HTTP_PATH.matcher(line);
-        if (!m.find()) {
+        Matcher quoted = HTTP_PATH_QUOTED.matcher(line);
+        if (quoted.find()) {
+            String method = quoted.group(1);
+            String path = quoted.group(2);
+            String key = method + " " + normalizePath(path);
+            target.merge(key, 1, Integer::sum);
             return;
         }
-        String method = m.group(1);
-        String path = m.group(2);
-        String key = method + " " + normalizePath(path);
-        target.merge(key, 1, Integer::sum);
+        Matcher plain = HTTP_PATH_PLAIN.matcher(line);
+        if (plain.find()) {
+            String method = plain.group(1);
+            String path = plain.group(2);
+            String key = method + " " + normalizePath(path);
+            target.merge(key, 1, Integer::sum);
+            return;
+        }
+        Matcher servlet = SERVLET_SERVICE.matcher(line);
+        if (servlet.find()) {
+            String name = servlet.group(1);
+            if (name != null && !name.trim().isEmpty()) {
+                target.merge("SERVLET " + name.trim(), 1, Integer::sum);
+            }
+        }
+    }
+
+    public List<Map<String, Object>> getTopControllersForRoot(String rootDir, LocalDateTime from, LocalDateTime to) {
+        Map<String, Integer> out = new HashMap<>();
+        forEachProjectLogLine(rootDir, from, to, line -> mergeControllerHit(line, out));
+        return toControllerRows(out);
+    }
+
+    public List<Map<String, Object>> getTopErrorsForRoot(String rootDir, LocalDateTime from, LocalDateTime to) {
+        Map<String, Integer> out = new HashMap<>();
+        forEachProjectLogLine(rootDir, from, to, line -> mergeErrorHotspot(line, out));
+        return toErrorRows(out);
+    }
+
+    private void forEachProjectLogLine(String rootDir, LocalDateTime from, LocalDateTime to, java.util.function.Consumer<String> consumer) {
+        Path logsDir = Paths.get(rootDir == null ? "" : rootDir).resolve("logs");
+        if (!Files.isDirectory(logsDir)) {
+            return;
+        }
+        List<Path> files = new ArrayList<>();
+        try (Stream<Path> stream = Files.list(logsDir)) {
+            stream.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().toLowerCase().endsWith(".log"))
+                    .filter(p -> {
+                        String n = p.getFileName().toString().toLowerCase();
+                        return !n.startsWith("msa-manager-");
+                    })
+                    .forEach(files::add);
+        } catch (Exception ignored) {
+            return;
+        }
+        files.sort(Comparator.comparing(Path::toString));
+        for (Path file : files) {
+            Deque<String> tail = new ArrayDeque<>(5000);
+            try (Stream<String> lines = Files.lines(file, StandardCharsets.UTF_8)) {
+                lines.forEach(line -> {
+                    if (tail.size() >= 5000) {
+                        tail.removeFirst();
+                    }
+                    tail.addLast(line);
+                });
+            } catch (Exception ignored) {
+                continue;
+            }
+            for (String line : tail) {
+                if (line == null) {
+                    continue;
+                }
+                if (!isLineInRange(line, from, to)) {
+                    continue;
+                }
+                consumer.accept(line);
+            }
+        }
+    }
+
+    private boolean isLineInRange(String line, LocalDateTime from, LocalDateTime to) {
+        if (from == null && to == null) {
+            return true;
+        }
+        LocalDateTime t = parseEventTime(extractLineTime(line));
+        if (t == null) {
+            return true;
+        }
+        if (from != null && t.isBefore(from)) {
+            return false;
+        }
+        if (to != null && t.isAfter(to)) {
+            return false;
+        }
+        return true;
     }
 
     private void mergeErrorHotspot(String line, Map<String, Integer> target) {
@@ -546,13 +656,15 @@ public class LogAnalyticsService {
             offsets.clear();
             List<MsaScanner.ModuleInfo> modules = scanner.scan();
             for (MsaScanner.ModuleInfo mod : modules) {
-                Path logPath = Paths.get(mod.getDir(), "startup.log");
+                Path logPath = resolveModuleLogPath(mod);
                 if (!Files.exists(logPath)) {
                     continue;
                 }
+                bootstrapFromLogTail(mod.getId(), logPath, 800);
                 try {
                     offsets.put(mod.getId(), Files.size(logPath));
                 } catch (Exception ignored) {
+                    offsets.put(mod.getId(), 0L);
                 }
             }
             saveOffsets();
@@ -590,6 +702,26 @@ public class LogAnalyticsService {
         }
     }
 
+    private void bootstrapFromLogTail(String moduleId, Path logPath, int maxLines) {
+        if (maxLines <= 0) {
+            return;
+        }
+        Deque<String> tail = new ArrayDeque<>(maxLines);
+        try (Stream<String> lines = Files.lines(logPath, StandardCharsets.UTF_8)) {
+            lines.forEach(line -> {
+                if (tail.size() >= maxLines) {
+                    tail.removeFirst();
+                }
+                tail.addLast(line);
+            });
+        } catch (Exception ignored) {
+            return;
+        }
+        for (String line : tail) {
+            ingestLine(moduleId, line == null ? "" : line);
+        }
+    }
+
     private void loadOffsets() {
         if (!Files.exists(OFFSET_FILE)) {
             return;
@@ -615,5 +747,36 @@ public class LogAnalyticsService {
                     "log offsets");
         } catch (Exception ignored) {
         }
+    }
+
+    private Path resolveModuleLogPath(MsaScanner.ModuleInfo mod) {
+        Path moduleDir = Paths.get(String.valueOf(mod.getDir()));
+
+        Path rootLogs = AppPaths.logsDir();
+        String moduleId = String.valueOf(mod.getId());
+        Path msa = rootLogs.resolve("msa-" + moduleId + ".log");
+        if (Files.exists(msa)) {
+            return msa;
+        }
+
+        String moduleLow = moduleId.toLowerCase();
+        try (Stream<Path> stream = Files.list(rootLogs)) {
+            Path matched = stream
+                    .filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().toLowerCase().startsWith(moduleLow + "-"))
+                    .filter(p -> p.getFileName().toString().toLowerCase().endsWith(".log"))
+                    .sorted()
+                    .reduce((a, b) -> b)
+                    .orElse(null);
+            if (matched != null) {
+                return matched;
+            }
+        } catch (Exception ignored) {
+        }
+        Path startup = moduleDir.resolve("startup.log");
+        if (Files.exists(startup)) {
+            return startup;
+        }
+        return startup;
     }
 }

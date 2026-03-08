@@ -188,10 +188,10 @@
     <main class="p-8">
         <div class="max-w-7xl mx-auto">
             <!-- Tabs -->
-            <div class="grid grid-rows-2 grid-flow-col auto-cols-fr border-b border-gray-200 mb-6 bg-white rounded-t-lg px-4 py-1 gap-x-1 gap-y-1 overflow-x-auto">
+            <div id="topNavTabs" class="grid grid-flow-row grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 border-b border-gray-200 mb-6 bg-white rounded-t-lg px-4 py-1 gap-x-1 gap-y-1">
                 <button onclick="showTab('remote-workspace')" id="tab-remote-workspace" class="nav-tab">원격 연결/파일</button>
                 <button onclick="showTab('modules')" id="tab-modules" class="nav-tab active">모듈 상태 관리</button>
-                <button onclick="showTab('mappings')" id="tab-mappings" class="nav-tab">컨트롤러/경로 &amp; API 스펙</button>
+                <button onclick="showTab('mappings')" id="tab-mappings" class="nav-tab">중앙 컨트롤러 매핑 &amp; API 스펙</button>
                 <button onclick="showTab('changes')" id="tab-changes" class="nav-tab">변경 감지/자동 배포</button>
                 <button onclick="showTab('ops-deploy')" id="tab-ops-deploy" class="nav-tab">운영 배포</button>
                 <button onclick="showTab('logs')" id="tab-logs" class="nav-tab">로그 모니터링</button>
@@ -201,6 +201,7 @@
                 <button onclick="showTab('security-explorer')" id="tab-security-explorer" class="nav-tab">보안 탐색 제어</button>
                 <button onclick="showTab('traffic')" id="tab-traffic" class="nav-tab">트래픽 부하 감지</button>
                 <button onclick="showTab('accessibility')" id="tab-accessibility" class="nav-tab">웹 접근성 감지</button>
+                <button onclick="showTab('env-settings')" id="tab-env-settings" class="nav-tab">환경 설정</button>
             </div>
 
             <!-- ============ Modules Tab ============ -->
@@ -287,7 +288,6 @@
                             <label class="text-xs font-bold text-gray-600 md:col-span-1">실행 모드
                                 <select id="projectRunMode" class="mt-1 w-full px-3 py-2 rounded border border-gray-200 text-xs bg-white">
                                     <option value="manager">manager API</option>
-                                    <option value="docker">docker compose</option>
                                     <option value="mvn">mvn spring-boot</option>
                                 </select>
                             </label>
@@ -374,6 +374,25 @@
                     <span id="mappingCount" class="text-xs text-gray-400 font-mono"></span>
                 </div>
 
+                <div class="gov-card mb-4 px-4 py-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm font-bold text-gray-700">로그인 실행기 (고정 URL)</h3>
+                        <span class="text-[11px] text-gray-400">signin/actionLogin + CSRF 자동 처리</span>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-2 mb-2">
+                        <input id="mappingExecMethod" class="lg:col-span-2 px-3 py-2 rounded border border-gray-200 text-xs mono bg-gray-50" value="POST" readonly />
+                        <input id="mappingExecUrl" class="lg:col-span-7 px-3 py-2 rounded border border-gray-200 text-xs mono bg-gray-50" value="http://localhost:18000/signin/actionLogin" readonly />
+                        <input id="mappingExecCodeId" class="lg:col-span-2 px-3 py-2 rounded border border-gray-200 text-xs mono" placeholder="X-CODE-ID (optional)" />
+                        <button onclick="runLoginExec()" class="lg:col-span-1 px-3 py-2 rounded text-[12px] font-bold bg-indigo-600 text-white hover:bg-indigo-700">로그인 실행</button>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-2 mb-2">
+                        <input id="mappingExecToken" class="px-3 py-2 rounded border border-gray-200 text-xs mono" placeholder="자동 추출 accessToken (Bearer)" />
+                        <input id="mappingExecHint" class="px-3 py-2 rounded border border-gray-200 text-xs text-gray-500" readonly value="프로젝트 선택 후 실행 권장" />
+                    </div>
+                    <textarea id="mappingExecBody" class="w-full px-3 py-2 rounded border border-gray-200 text-xs mono" rows="4" placeholder='{"userId":"...","userPw":"...","userSe":"ENT"}'></textarea>
+                    <pre id="mappingExecResult" class="mt-2 p-3 rounded bg-slate-900 text-emerald-200 text-[11px] mono overflow-auto max-h-56">ready</pre>
+                </div>
+
                 <div class="gov-card overflow-hidden">
                     <div class="flex justify-between items-center px-6 py-4 border-b border-gray-100">
                         <h2 class="text-base font-bold flex items-center gap-2">
@@ -385,6 +404,7 @@
                     <div id="mappingAccordion" class="divide-y divide-gray-100"></div>
                 </div>
             </div>
+
 
             <!-- ============ Changes Tab ============ -->
             <div id="content-changes" class="tab-content hidden">
@@ -606,7 +626,7 @@
                         </div>
                         <div class="flex items-center gap-2">
                             <button onclick="resetLiveLogs()" class="px-3 py-2 rounded text-[12px] font-bold bg-rose-600 text-white hover:bg-rose-700">실시간 로그 초기화</button>
-                            <span class="text-xs text-gray-400 mono" th:text="'파일: ' + ${appRoot} + '/logs/module-log-events.jsonl'">파일: /opt/projects/carbonet/logs/module-log-events.jsonl</span>
+                            <span id="liveLogFilePath" class="text-xs text-gray-400 mono" th:text="'파일: ' + ${appRoot} + '/logs/module-log-events.jsonl'">파일: /opt/projects/carbonet/logs/module-log-events.jsonl</span>
                         </div>
                     </div>
                 </div>
@@ -1099,6 +1119,34 @@
                 </div>
             </div>
 
+            <!-- ============ Env Settings Tab ============ -->
+            <div id="content-env-settings" class="tab-content hidden">
+                <div class="gov-card overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                        <h3 class="font-bold text-base flex items-center gap-2">
+                            <span class="material-symbols-outlined text-indigo-600">tune</span>
+                            환경 설정
+                        </h3>
+                        <span class="text-xs text-gray-400">관리 화면 개인화</span>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] min-h-[520px]">
+                        <aside class="border-r border-gray-100 bg-slate-50/80 p-4">
+                            <div class="text-[11px] font-black text-slate-500 uppercase tracking-wider mb-3">설정 메뉴</div>
+                            <div id="envSettingsLeftMenu" class="space-y-2">
+                                <button type="button" data-menu-id="top-tabs"
+                                    onclick="selectEnvSettingsMenu('top-tabs')"
+                                    class="w-full text-left px-3 py-2 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold">
+                                    상단 메뉴 버튼 메뉴
+                                </button>
+                            </div>
+                        </aside>
+                        <section class="p-6">
+                            <div id="envSettingsRightPane"></div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
             <!-- Log Section -->
             <div id="logSection" class="hidden mt-8 transition-all duration-500 opacity-0 scale-95">
                 <div class="gov-card border-l-4 border-[var(--kr-gov-blue)]">
@@ -1150,12 +1198,30 @@
         let remoteOpenedFilePath = '';
         let remoteTreeEntries = [];
         let modulesSynced = false;
+        let modulesRefreshInFlight = false;
         let syncedProjectId = "";
         let moduleListHint = "";
         let webhookTokenPlain = '';
         const webhookTokenStorageKey = 'msaWebhookTokenPlain';
         const sshTokenStorageKey = 'msaProjectSshToken';
         const tabStorageKey = 'msaManagerActiveTab';
+        const topTabOrderStorageKey = 'msaManagerTopTabOrderV1';
+        const defaultTopTabOrder = [
+            'remote-workspace',
+            'modules',
+            'mappings',
+            'changes',
+            'ops-deploy',
+            'logs',
+            'log-history',
+            'analytics',
+            'security',
+            'security-explorer',
+            'traffic',
+            'accessibility',
+            'env-settings'
+        ];
+        let envSettingsSelectedMenu = 'top-tabs';
         const nativeFetch = window.fetch.bind(window);
 
         function normalizeApiPath(resource) {
@@ -1176,10 +1242,18 @@
             return resource.startsWith('admin/msa') ? ('/' + resource) : resource;
         }
 
+        function selectedProject() {
+            return projectRegistry.find(p => p.id === selectedProjectId) || null;
+        }
+
         function shouldProxyApi(path) {
             if (!selectedProjectId) return false;
-            if (!path.startsWith('/admin/msa/api/')) return false;
-            if (path.startsWith('/admin/msa/api/projects')) return false;
+            if (!path.startsWith("/admin/msa/api/")) return false;
+            if (path.startsWith("/admin/msa/api/projects")) return false;
+            if (path === "/admin/msa/api/mappings") return false;
+            if (path.startsWith("/admin/msa/api/stats/")) return false;
+            const p = selectedProject();
+            if (!p) return false;
             return true;
         }
 
@@ -1285,6 +1359,7 @@
             if (tab === 'security-explorer') refreshSecurityExplorerTab();
             if (tab === 'traffic') refreshTrafficTab();
             if (tab === 'accessibility') refreshAccessibilityTab();
+            if (tab === 'env-settings') refreshEnvSettingsTab();
         }
 
         function restoreActiveTab() {
@@ -1342,6 +1417,15 @@
             const params = new URLSearchParams();
             if (logRangeFrom) params.set('from', logRangeFrom);
             if (logRangeTo) params.set('to', logRangeTo);
+            const q = params.toString();
+            return q ? `?${q}` : '';
+        }
+
+        function getAnalyticsQuery() {
+            const params = new URLSearchParams();
+            if (logRangeFrom) params.set('from', logRangeFrom);
+            if (logRangeTo) params.set('to', logRangeTo);
+            if (selectedProjectId) params.set('projectId', selectedProjectId);
             const q = params.toString();
             return q ? `?${q}` : '';
         }
@@ -1434,6 +1518,8 @@
         }
 
         async function refreshModules() {
+            if (modulesRefreshInFlight) return;
+            modulesRefreshInFlight = true;
             try {
                 if (selectedProjectId && (!modulesSynced || syncedProjectId !== selectedProjectId)) {
                     setModuleWaitingState('동기화 전입니다. "연결 확인+모듈 동기화"를 먼저 실행하세요.');
@@ -1470,7 +1556,7 @@
                 }
 
                 // If mappings are already loaded, we can group modules by their primary path segment
-                if (allMappings.length === 0) {
+                if (!selectedProjectId && allMappings.length === 0) {
                     const mRes = await fetch('/admin/msa/api/mappings');
                     allMappings = await mRes.json();
                 }
@@ -1480,6 +1566,8 @@
             } catch (e) {
                 console.error(e);
                 syncModuleProjectInfo('error');
+            } finally {
+                modulesRefreshInFlight = false;
             }
         }
 
@@ -1561,9 +1649,17 @@
         /* ── Mappings ── */
         async function refreshMappings() {
             try {
-                // 매핑 스펙은 현재 관리자 기준으로 조회(프로젝트 프록시 제외)
-                const res = await nativeFetch('/admin/msa/api/mappings');
-                allMappings = await res.json();
+                if (selectedProjectId) {
+                    const res = await fetch(`/admin/msa/api/projects/${encodeURIComponent(selectedProjectId)}/discover/mappings`, {
+                        headers: { ...sshHeaders() }
+                    });
+                    const data = await res.json();
+                    if (data.status === 'error') throw new Error(data.message || '매핑 조회 실패');
+                    allMappings = Array.isArray(data.mappings) ? data.mappings : [];
+                } else {
+                    const res = await fetch('/admin/msa/api/mappings');
+                    allMappings = await res.json();
+                }
                 renderMappings(allMappings);
             } catch (e) {
                 console.error(e);
@@ -1571,6 +1667,101 @@
                 if (c) c.innerHTML = '<div class="px-6 py-6 text-sm text-red-600">매핑 조회 실패: ' + escHtml(e.message || e) + '</div>';
             }
         }
+
+        function buildMappingExecUrl(path, map) {
+            const p = (path || '').replace(/\/\*\*$/, '').replace(/\{[^}]+\}/g, '');
+            if (!p) return '';
+            if (map && map.port) return `http://127.0.0.1:${map.port}${p}`;
+            return `http://127.0.0.1:18000${p}`;
+        }
+
+        function fillMappingExecByIndex(idx) {
+            const map = Array.isArray(allMappings) ? allMappings[idx] : null;
+            if (!map) return;
+            const method = ((map.method || 'GET').split('/')[0] || 'GET').toUpperCase();
+            const url = buildMappingExecUrl(map.path, map);
+            let body = '';
+            if (Array.isArray(map.requestBody) && map.requestBody.length) {
+                const ex = Object.fromEntries(map.requestBody.map(p => [p.name, p.type === 'String' ? 'value' : 0]));
+                body = JSON.stringify(ex, null, 2);
+            }
+            document.getElementById('mappingExecMethod').value = method;
+            document.getElementById('mappingExecUrl').value = url;
+            document.getElementById('mappingExecBody').value = body;
+            document.getElementById('mappingExecHint').value = '실행기로 경로를 채웠습니다';
+        }
+
+        async function runDiscoverExecute(method, targetUrl, body, codeId, token) {
+            const res = await fetch(`/admin/msa/api/projects/${encodeURIComponent(selectedProjectId)}/discover/execute`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...sshHeaders() },
+                body: JSON.stringify({ method, targetUrl, token, codeId, body })
+            });
+            const txt = await res.text();
+            try {
+                return JSON.parse(txt);
+            } catch (e) {
+                return { status: 'error', message: txt };
+            }
+        }
+
+        function applyTokenFromResult(data) {
+            const token = data && data.cookieTokens ? (data.cookieTokens.accessToken || '') : '';
+            if (token) {
+                const el = document.getElementById('mappingExecToken');
+                if (el) el.value = token;
+            }
+            return token;
+        }
+
+        async function runLoginExec() {
+            const out = document.getElementById('mappingExecResult');
+            const hint = document.getElementById('mappingExecHint');
+            try {
+                const method = 'POST';
+                const targetUrl = (document.getElementById('mappingExecUrl')?.value || '').trim();
+                const token = '';
+                const codeId = (document.getElementById('mappingExecCodeId')?.value || '').trim();
+                const body = (document.getElementById('mappingExecBody')?.value || '').trim();
+                if (!selectedProjectId) throw new Error('프로젝트를 먼저 선택하세요.');
+                if (!targetUrl) throw new Error('실행 URL을 입력하세요.');
+
+                out.textContent = 'running...';
+                const data = await runDiscoverExecute(method, targetUrl, body, codeId, token);
+                const extracted = applyTokenFromResult(data);
+                out.textContent = JSON.stringify(data, null, 2);
+                if (data && data.status === 'ok') {
+                    hint.value = extracted
+                        ? `HTTP ${data.httpStatus || '-'} | accessToken 자동추출 완료`
+                        : `HTTP ${data.httpStatus || '-'} | 토큰은 쿠키 기반`;
+                } else {
+                    hint.value = `error: ${(data && data.message) ? data.message : 'unknown'}`;
+                }
+            } catch (e) {
+                out.textContent = String(e.message || e);
+                hint.value = '실행 실패';
+            }
+        }
+
+        async function runRowMappingExec(idx) {
+            const map = Array.isArray(allMappings) ? allMappings[idx] : null;
+            if (!map) return;
+            const out = document.getElementById(`rowExecResult-${idx}`);
+            const method = ((map.method || 'GET').split('/')[0] || 'GET').toUpperCase();
+            const targetUrl = buildMappingExecUrl(map.path, map);
+            const body = (document.getElementById(`rowExecBody-${idx}`)?.value || '').trim();
+            const codeId = (document.getElementById('mappingExecCodeId')?.value || '').trim();
+            const token = (document.getElementById('mappingExecToken')?.value || '').trim();
+            if (!selectedProjectId) {
+                if (out) out.textContent = '프로젝트를 먼저 선택하세요.';
+                return;
+            }
+            if (out) out.textContent = 'running...';
+            const data = await runDiscoverExecute(method, targetUrl, body, codeId, token);
+            applyTokenFromResult(data);
+            if (out) out.textContent = JSON.stringify(data, null, 2);
+        }
+
 
         function filterMappings() {
             const q = document.getElementById('searchInput').value.toLowerCase();
@@ -1634,6 +1825,16 @@
             const methodBadge = `<span class="badge-${methodKey} text-[10px] font-bold mono px-2 py-0.5 rounded">${method}</span>`;
 
             const hasApi = (map.params && map.params.length) || (map.requestBody && map.requestBody.length) || (map.response && map.response.length);
+            const rowDefaultBody = (map.requestBody && map.requestBody.length)
+                ? JSON.stringify(Object.fromEntries(map.requestBody.map(p => [p.name, p.type === 'String' ? 'value' : 0])), null, 2)
+                : '';
+
+            function schemaCell(schema) {
+                if (schema === undefined || schema === null || schema === '') return '-';
+                if (typeof schema === 'string') return escHtml(schema);
+                const pretty = JSON.stringify(schema, null, 2);
+                return `<details class="cursor-pointer"><summary class="text-[10px] text-cyan-700 font-bold">보기</summary><pre class="mt-1 p-2 text-[10px] bg-slate-50 border border-slate-200 rounded overflow-x-auto">${escHtml(pretty)}</pre></details>`;
+            }
 
             /* ─ param table helper ─ */
             function paramRows(list, showRequired) {
@@ -1644,6 +1845,7 @@
                             ${showRequired && p.required ? '<span class="required-dot" title="필수"></span>' : ''}${escHtml(p.name)}
                         </td>
                         <td class="mono text-orange-600">${escHtml(p.type)}</td>
+                        <td class="text-slate-600">${schemaCell(p.schema)}</td>
                         ${showRequired ? `<td><span class="text-[10px] font-bold ${p.required ? 'text-red-500' : 'text-gray-400'}">${p.required ? '필수' : '선택'}</span></td>` : ''}
                         <td class="text-gray-500">${escHtml(p.description || '')}</td>
                     </tr>`).join('');
@@ -1655,7 +1857,7 @@
                         <span class="material-symbols-outlined text-[14px]">tune</span> Query Parameters
                     </div>
                     <table class="param-table w-full rounded overflow-hidden border border-gray-100">
-                        <thead><tr><th>Name</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+                        <thead><tr><th>Name</th><th>Type</th><th>Schema</th><th>Required</th><th>Description</th></tr></thead>
                         <tbody>${paramRows(map.params, true)}</tbody>
                     </table>
                 </div>` : '';
@@ -1666,7 +1868,7 @@
                         <span class="material-symbols-outlined text-[14px]">send</span> Request Body (JSON)
                     </div>
                     <table class="param-table w-full rounded overflow-hidden border border-gray-100">
-                        <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+                        <thead><tr><th>Field</th><th>Type</th><th>Schema</th><th>Required</th><th>Description</th></tr></thead>
                         <tbody>${paramRows(map.requestBody, true)}</tbody>
                     </table>
                 </div>` : '';
@@ -1677,7 +1879,7 @@
                         <span class="material-symbols-outlined text-[14px]">data_object</span> Response Schema
                     </div>
                     <table class="param-table w-full rounded overflow-hidden border border-gray-100">
-                        <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+                        <thead><tr><th>Field</th><th>Type</th><th>Schema</th><th>Description</th></tr></thead>
                         <tbody>${paramRows(map.response, false)}</tbody>
                     </table>
                 </div>` : '';
@@ -1723,14 +1925,28 @@
                     </table>
                 </div>` : '';
 
-            const accordionBody = hasApi || (map.uiElements && map.uiElements.length) ? `
+            const rowRunnerSection = `
+                <div class="mb-4">
+                    <div class="text-[11px] font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <span class="material-symbols-outlined text-[14px]">play_circle</span> API 실행기
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-2 mb-2">
+                        <input class="lg:col-span-2 px-2 py-1 rounded border border-gray-200 text-[11px] mono bg-gray-50" value="${escHtml(method.split('/')[0])}" readonly />
+                        <input class="lg:col-span-9 px-2 py-1 rounded border border-gray-200 text-[11px] mono bg-gray-50" value="${escHtml(directUrl || buildMappingExecUrl(map.path, map))}" readonly />
+                        <button onclick="event.stopPropagation();runRowMappingExec(${i});" class="lg:col-span-1 px-2 py-1 rounded text-[11px] font-bold bg-indigo-600 text-white hover:bg-indigo-700">실행</button>
+                    </div>
+                    <textarea id="rowExecBody-${i}" class="w-full px-2 py-1 rounded border border-gray-200 text-[11px] mono" rows="3" placeholder='{}'>${escHtml(rowDefaultBody)}</textarea>
+                    <pre id="rowExecResult-${i}" class="mt-2 p-2 rounded bg-slate-900 text-emerald-200 text-[11px] mono overflow-auto max-h-40">ready</pre>
+                </div>`;
+
+            const accordionBody = `
                 <div class="accordion-body" id="acc-${i}">
                     <div class="px-6 py-4 bg-slate-50 border-t border-gray-100 space-y-1">
-                        ${uiElementsSection}${exampleHtml}${paramsSection}${bodySection}${responseSection}
+                        ${rowRunnerSection}${uiElementsSection}${exampleHtml}${paramsSection}${bodySection}${responseSection}
                     </div>
-                </div>` : '';
+                </div>`;
 
-            const hasAccordion = hasApi || (map.uiElements && map.uiElements.length);
+            const hasAccordion = true;
             const chevron = hasAccordion ? `<span class="material-symbols-outlined text-[18px] text-gray-400 chevron ml-2">expand_more</span>` : '';
 
             return `
@@ -1764,7 +1980,11 @@
                             <a href="${directUrl}" target="_blank" onclick="event.stopPropagation()"
                                class="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
                                <span class="material-symbols-outlined text-[13px]">open_in_new</span>직접 열기
-                            </a>` : ''}
+                            </a>
+                            <button onclick="event.stopPropagation();fillMappingExecByIndex(${i});"
+                               class="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold border border-cyan-200 text-cyan-700 hover:bg-cyan-50 transition-colors">
+                               <span class="material-symbols-outlined text-[13px]">play_circle</span>실행기 채우기
+                            </button>` : ''}
                     </div>
                     ${chevron}
                 </div>
@@ -1906,7 +2126,14 @@
                 const p = projectRegistry.find(x => x.id === selectedProjectId);
                 const root = (p?.rootDir || appRoot || '.').replace(/'/g, "'\"'\"'");
                 const moduleId = String(currentLogId).replace(/'/g, "'\"'\"'");
-                const cmd = `set -e; f1='${root}/logs/msa-${moduleId}.log'; f2='${root}/module/${moduleId}/startup.log'; [ -f \"$f1\" ] && tail -n 200 \"$f1\" || true; [ -f \"$f2\" ] && tail -n 200 \"$f2\" || true`;
+                const cmd = `set -e; ` +
+                    `f1='${root}/logs/msa-${moduleId}.log'; ` +
+                    `f2='${root}/module/${moduleId}/startup.log'; ` +
+                    `f3='${root}/startup.log'; ` +
+                    `[ -f "$f1" ] && tail -n 200 "$f1" || true; ` +
+                    `[ -f "$f2" ] && tail -n 200 "$f2" || true; ` +
+                    `[ -f "$f3" ] && tail -n 200 "$f3" || true; ` +
+                    `find '${root}/logs' -maxdepth 1 -type f -name '${moduleId}-*.log' 2>/dev/null | sort | tail -n 1 | xargs -r tail -n 200`;
                 const res = await fetch(`/admin/msa/api/projects/${encodeURIComponent(selectedProjectId)}/ssh/exec`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...sshHeaders() },
@@ -2337,6 +2564,7 @@
             setProjectInputValue(['projectPassword', 'remotePassword'], '');
             setProjectInputValue(['projectRootDir', 'remoteDir'], appRoot);
             setProjectInputValue(['projectContainerName', 'remoteContainerName'], 'carbosys-app');
+            setProjectInputValue(['projectManagerUrl', 'remoteManagerUrl'], 'http://localhost:18030');
             setProjectInputValue(['projectRunMode'], 'manager');
             setProjectInputValue(['projectDockerComposeFile'], 'docker-compose.yml');
         }
@@ -2353,7 +2581,9 @@
             setProjectInputValue(['projectKeyPath', 'remoteKeyPath'], p.keyPath);
             setProjectInputValue(['projectRootDir', 'remoteDir'], p.rootDir || appRoot);
             setProjectInputValue(['projectContainerName', 'remoteContainerName'], p.containerName || 'carbosys-app');
-            setProjectInputValue(['projectRunMode'], p.runMode || 'manager');
+            setProjectInputValue(['projectManagerUrl', 'remoteManagerUrl'], p.managerUrl || 'http://localhost:18030');
+            const effectiveRunMode = (p.runMode === 'docker') ? 'mvn' : (p.runMode || 'manager');
+            setProjectInputValue(['projectRunMode'], effectiveRunMode);
             setProjectInputValue(['projectDockerComposeFile'], p.dockerComposeFile || 'docker-compose.yml');
         }
 
@@ -2405,10 +2635,24 @@
             const p = projectRegistry.find(x => x.id === selectedProjectId);
             if (!p) {
                 info.textContent = `project: -, registered=${projectRegistry.length}`;
+                updateLiveLogFilePath();
                 return;
             }
-            const base = `project: ${p.name || p.id} (${p.id}), ${p.user || '-'}@${p.host || '-'}:${p.port || '22'}, auth=${p.authType || 'auto'}, mode=${p.runMode || 'manager'}, root=${p.rootDir || '-'}`;
+            const base = `project: ${p.name || p.id} (${p.id}), ${p.user || '-'}@${p.host || '-'}:${p.port || '22'}, auth=${p.authType || 'auto'}, mode=${p.runMode || 'manager'}, manager=${p.managerUrl || '-'}, root=${p.rootDir || '-'}`;
             info.textContent = extra ? `${base} | ${extra}` : base;
+            updateLiveLogFilePath();
+        }
+
+        function selectedProjectRootDir() {
+            const p = projectRegistry.find(x => x.id === selectedProjectId);
+            return (p && p.rootDir) ? p.rootDir : appRoot;
+        }
+
+        function updateLiveLogFilePath() {
+            const el = document.getElementById('liveLogFilePath');
+            if (!el) return;
+            const root = selectedProjectRootDir();
+            el.textContent = `파일: ${root}/logs/module-log-events.jsonl`;
         }
 
         async function saveProjectFromRemoteConfig() {
@@ -2429,7 +2673,7 @@
                     password: getProjectInputValue(['projectPassword', 'remotePassword']),
                     rootDir: getProjectInputValue(['projectRootDir', 'remoteDir'], appRoot) || appRoot,
                     containerName: getProjectInputValue(['projectContainerName', 'remoteContainerName'], 'carbosys-app') || 'carbosys-app',
-                    managerUrl: 'http://localhost:18030',
+                    managerUrl: getProjectInputValue(['projectManagerUrl', 'remoteManagerUrl'], 'http://localhost:18030') || 'http://localhost:18030',
                     runMode: getProjectInputValue(['projectRunMode'], 'manager') || 'manager',
                     dockerComposeFile: getProjectInputValue(['projectDockerComposeFile'], 'docker-compose.yml') || 'docker-compose.yml',
                     enabled: true
@@ -2569,10 +2813,18 @@
                 }
                 const ok = await runProjectSshTest();
                 if (!ok) return;
+                try {
+                    await fetch(`/admin/msa/api/projects/${encodeURIComponent(id)}/manager/url`, {
+                        headers: { ...sshHeaders() }
+                    });
+                } catch (e) {
+                    console.warn('manager warmup failed', e);
+                }
                 await loadProjectModules();
                 modulesSynced = true;
                 syncedProjectId = id;
                 await refreshModules();
+                await refreshMappings();
                 showToast('success', `프로젝트 연결 완료: ${id}`);
             } catch (e) {
                 showToast('error', '프로젝트 연결 실패: ' + e.message);
@@ -2582,7 +2834,7 @@
         function fillRemoteModuleSelect() {
             const sel = document.getElementById('remoteModuleSelect');
             if (!sel) return;
-            const rows = selectedProjectModules.length
+            const rows = selectedProjectId
                 ? selectedProjectModules.filter(m => m && m.id)
                 : (modules || []).filter(m => m && m.javaRunnable && m.id !== 'EgovMsaManager');
             const current = sel.value;
@@ -2940,7 +3192,12 @@
         }
 
         /* ── Logs Tab ── */
+        async function fetchLogsApi(path, method = 'GET') {
+            return fetch(path, { method });
+        }
+
         async function refreshLogTab() {
+            updateLiveLogFilePath();
             await Promise.all([refreshModuleLogs(), refreshCriticalLogs()]);
             renderModuleLogs();
             renderCriticalBanner();
@@ -2948,7 +3205,7 @@
 
         async function refreshModuleLogs() {
             try {
-                const r = await fetch('/admin/msa/api/logs/modules');
+                const r = await fetchLogsApi('/admin/msa/api/logs/modules');
                 const data = await r.json();
                 moduleLogs = data.modules || [];
             } catch (e) { console.error(e); }
@@ -2956,7 +3213,7 @@
 
         async function refreshCriticalLogs() {
             try {
-                const r = await fetch('/admin/msa/api/logs/critical');
+                const r = await fetchLogsApi('/admin/msa/api/logs/critical');
                 criticalLogs = await r.json();
             } catch (e) { console.error(e); }
         }
@@ -2966,7 +3223,7 @@
                 return;
             }
             try {
-                const res = await fetch('/admin/msa/api/logs/reset', { method: 'POST' });
+                const res = await fetchLogsApi('/admin/msa/api/logs/reset', 'POST');
                 const data = await res.json();
                 if (!res.ok || data.status !== 'ok') {
                     throw new Error(data.message || '실시간 로그 초기화 실패');
@@ -3140,14 +3397,14 @@
 
         async function refreshControllerStats() {
             try {
-                const r = await fetch('/admin/msa/api/stats/controllers' + getLogRangeQuery());
+                const r = await fetch('/admin/msa/api/stats/controllers' + getAnalyticsQuery());
                 controllerStats = await r.json();
             } catch (e) { console.error(e); }
         }
 
         async function refreshErrorStats() {
             try {
-                const r = await fetch('/admin/msa/api/stats/errors' + getLogRangeQuery());
+                const r = await fetch('/admin/msa/api/stats/errors' + getAnalyticsQuery());
                 errorStats = await r.json();
             } catch (e) { console.error(e); }
         }
@@ -3658,6 +3915,185 @@
             }).join('');
         }
 
+        function getTopNavContainer() {
+            return document.getElementById('topNavTabs');
+        }
+
+        function currentTopTabOrder() {
+            const container = getTopNavContainer();
+            if (!container) return [];
+            return Array.from(container.querySelectorAll('.nav-tab[id^="tab-"]'))
+                .map(btn => String(btn.id || '').replace(/^tab-/, ''))
+                .filter(Boolean);
+        }
+
+        function normalizeTopTabOrder(order) {
+            const known = new Set(defaultTopTabOrder);
+            const normalized = [];
+            for (const id of (order || [])) {
+                if (known.has(id) && !normalized.includes(id)) {
+                    normalized.push(id);
+                }
+            }
+            for (const id of defaultTopTabOrder) {
+                if (!normalized.includes(id)) {
+                    normalized.push(id);
+                }
+            }
+            return normalized;
+        }
+
+        function persistTopTabOrder(order) {
+            try {
+                localStorage.setItem(topTabOrderStorageKey, JSON.stringify(order));
+            } catch (e) { }
+        }
+
+        function loadTopTabOrder() {
+            try {
+                const raw = localStorage.getItem(topTabOrderStorageKey);
+                if (!raw) return defaultTopTabOrder.slice();
+                const parsed = JSON.parse(raw);
+                if (!Array.isArray(parsed)) return defaultTopTabOrder.slice();
+                return normalizeTopTabOrder(parsed);
+            } catch (e) {
+                return defaultTopTabOrder.slice();
+            }
+        }
+
+        function applyTopTabOrder(order, persist) {
+            const container = getTopNavContainer();
+            if (!container) return;
+            const normalized = normalizeTopTabOrder(order);
+            const byId = new Map(
+                Array.from(container.querySelectorAll('.nav-tab[id^="tab-"]'))
+                    .map(btn => [String(btn.id || '').replace(/^tab-/, ''), btn])
+            );
+            normalized.forEach(id => {
+                const btn = byId.get(id);
+                if (btn) container.appendChild(btn);
+            });
+            if (persist) {
+                persistTopTabOrder(normalized);
+            }
+        }
+
+        function tabLabelById(id) {
+            const btn = document.getElementById(`tab-${id}`);
+            return btn ? (btn.textContent || id).trim() : id;
+        }
+
+        function swapTopTab(id, dir) {
+            const order = currentTopTabOrder();
+            const idx = order.indexOf(id);
+            if (idx < 0) return;
+            const target = idx + dir;
+            if (target < 0 || target >= order.length) return;
+            const tmp = order[idx];
+            order[idx] = order[target];
+            order[target] = tmp;
+            applyTopTabOrder(order, true);
+            renderTopTabEditor();
+        }
+
+        function moveTopTabUp(id) { swapTopTab(id, -1); }
+        function moveTopTabDown(id) { swapTopTab(id, +1); }
+
+        function resetTopTabOrder() {
+            applyTopTabOrder(defaultTopTabOrder.slice(), true);
+            renderTopTabEditor();
+            showToast('info', '상단 메뉴 순서를 기본값으로 되돌렸습니다.');
+        }
+
+        function saveTopTabOrder() {
+            persistTopTabOrder(currentTopTabOrder());
+            showToast('success', '상단 메뉴 순서를 저장했습니다.');
+        }
+
+        function dragStartTopTab(ev) {
+            const id = ev?.target?.dataset?.tabId || '';
+            if (!id) return;
+            ev.dataTransfer.setData('text/plain', id);
+            ev.dataTransfer.effectAllowed = 'move';
+        }
+
+        function dragOverTopTab(ev) {
+            ev.preventDefault();
+            ev.dataTransfer.dropEffect = 'move';
+        }
+
+        function dropTopTab(ev) {
+            ev.preventDefault();
+            const fromId = ev.dataTransfer.getData('text/plain');
+            const toId = ev?.currentTarget?.dataset?.tabId || '';
+            if (!fromId || !toId || fromId === toId) return;
+            const order = currentTopTabOrder();
+            const fromIdx = order.indexOf(fromId);
+            const toIdx = order.indexOf(toId);
+            if (fromIdx < 0 || toIdx < 0) return;
+            order.splice(fromIdx, 1);
+            order.splice(toIdx, 0, fromId);
+            applyTopTabOrder(order, true);
+            renderTopTabEditor();
+        }
+
+        function selectEnvSettingsMenu(menuId) {
+            envSettingsSelectedMenu = menuId || 'top-tabs';
+            document.querySelectorAll('#envSettingsLeftMenu [data-menu-id]').forEach(btn => {
+                const active = btn.getAttribute('data-menu-id') === envSettingsSelectedMenu;
+                btn.className = active
+                    ? 'w-full text-left px-3 py-2 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold'
+                    : 'w-full text-left px-3 py-2 rounded border border-gray-200 bg-white text-gray-700 text-xs font-bold hover:bg-gray-50';
+            });
+            refreshEnvSettingsTab();
+        }
+
+        function renderTopTabEditor() {
+            const pane = document.getElementById('envSettingsRightPane');
+            if (!pane) return;
+            const order = currentTopTabOrder();
+            pane.innerHTML = `
+                <div class="space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <h4 class="text-base font-black text-slate-800">상단 메뉴 버튼 순서 편집</h4>
+                            <p class="text-xs text-gray-500 mt-1">드래그하거나 위/아래 버튼으로 순서를 바꾼 뒤 저장하세요.</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button type="button" onclick="resetTopTabOrder()" class="px-3 py-2 rounded border border-gray-200 text-gray-700 text-xs font-bold hover:bg-gray-50">기본값 복원</button>
+                            <button type="button" onclick="saveTopTabOrder()" class="px-3 py-2 rounded bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700">순서 저장</button>
+                        </div>
+                    </div>
+                    <div id="topTabOrderEditor" class="space-y-2"></div>
+                </div>
+            `;
+            const box = document.getElementById('topTabOrderEditor');
+            if (!box) return;
+            box.innerHTML = order.map((id, idx) => `
+                <div class="flex items-center gap-2 rounded border border-gray-200 bg-white px-3 py-2"
+                    data-tab-id="${escHtml(id)}" draggable="true"
+                    ondragstart="dragStartTopTab(event)" ondragover="dragOverTopTab(event)" ondrop="dropTopTab(event)">
+                    <span class="material-symbols-outlined text-slate-400 text-[18px]">drag_indicator</span>
+                    <span class="w-8 text-[11px] mono text-gray-400">${idx + 1}</span>
+                    <span class="flex-1 text-xs font-bold text-slate-700">${escHtml(tabLabelById(id))}</span>
+                    <span class="text-[10px] mono text-gray-400">${escHtml(id)}</span>
+                    <button type="button" onclick="moveTopTabUp('${escHtml(id)}')" class="px-2 py-1 rounded border border-gray-200 text-[11px] font-bold text-gray-700 hover:bg-gray-50">↑</button>
+                    <button type="button" onclick="moveTopTabDown('${escHtml(id)}')" class="px-2 py-1 rounded border border-gray-200 text-[11px] font-bold text-gray-700 hover:bg-gray-50">↓</button>
+                </div>
+            `).join('');
+        }
+
+        function refreshEnvSettingsTab() {
+            if (envSettingsSelectedMenu === 'top-tabs') {
+                renderTopTabEditor();
+                return;
+            }
+            const pane = document.getElementById('envSettingsRightPane');
+            if (pane) {
+                pane.innerHTML = `<div class="text-xs text-gray-500">준비 중입니다.</div>`;
+            }
+        }
+
         /* ── Kill All Java ── */
         async function killAllJava() {
             if (runtimeConfig.dangerousOpsBlocked) {
@@ -3727,8 +4163,14 @@
         refreshProjectRegistry();
         updateLogRangeLabel();
         refreshSecurityExplorerTab();
+        applyTopTabOrder(loadTopTabOrder(), false);
+        selectEnvSettingsMenu('top-tabs');
         restoreActiveTab();
-        setInterval(refreshModules, 5000);
+        setInterval(() => {
+            if (!document.getElementById('content-modules')?.classList.contains('hidden')) {
+                refreshModules();
+            }
+        }, 5000);
         setInterval(() => {
             if (!document.getElementById('content-changes').classList.contains('hidden')) {
                 refreshRuntimeConfig();
@@ -3769,7 +4211,7 @@
     return a || b;
   }
   function pickRootDir() {
-    const v = document.getElementById('projectRootDir')?.value || document.getElementById('remoteDir')?.value || '/opt/projects/carbonet';
+    const v = document.getElementById('projectRootDir')?.value || document.getElementById('remoteDir')?.value || appRoot || '.';
     return (v || '.').trim();
   }
   function escHtml2(v) { return String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }

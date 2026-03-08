@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 final class AppPaths {
-    private static final String DEFAULT_ROOT = "../../projects/carbonet";
+    private static final String DEFAULT_ROOT = "../../../projects/carbosys";
     private static final Path ROOT = resolveRoot();
 
     private AppPaths() {
